@@ -3,22 +3,88 @@ import {
   ClientHandshakeSchema,
   GuestProfileCreationIntentSchema,
   HealthResponseSchema,
+  PracticeAckSchema,
+  PracticeCreateIntentSchema,
+  PracticeMatchViewSchema,
   SafeIdSchema,
 } from './index.js';
 
+const card = {
+  instanceId: 'water.common#1',
+  definitionId: 'water.common',
+  name: 'Water',
+  description: 'A card.',
+  rarity: 'common' as const,
+  iconPath: '/cards/water.common.png',
+};
+const view = {
+  matchId: 'm1',
+  yourPlayerId: 'p1',
+  stateVersion: 0,
+  phase: 'playing' as const,
+  players: [
+    { id: 'p1', displayName: 'Ari', isBot: false, capturedCardCount: 0, handCount: 10 },
+    { id: 'p2', displayName: 'Bot 1', isBot: true, capturedCardCount: 0, handCount: 10 },
+  ],
+  hand: [card],
+  legalCardInstanceIds: ['water.common#1'],
+  challengeCard: card,
+  leaderId: 'p2',
+  currentPlayerId: 'p1',
+  turnId: 'turn-1',
+  turnEndsAt: 1,
+  pileCount: 1,
+  deckCount: 179,
+};
+
 describe('shared boundary contracts', () => {
-  it('accepts a valid guest profile creation intent', () => {
+  it('accepts valid guest profiles and all practice bot counts', () => {
     expect(
       GuestProfileCreationIntentSchema.parse({ displayName: 'Ari Stone', requestId: 'guest_01' }),
     ).toEqual({ displayName: 'Ari Stone', requestId: 'guest_01' });
+    expect(
+      [1, 3].map(
+        (botCount) => PracticeCreateIntentSchema.parse({ displayName: 'Ari', botCount }).botCount,
+      ),
+    ).toEqual([1, 3]);
   });
 
-  it('rejects malformed public input', () => {
+  it('rejects malformed, forged, and private boundary input', () => {
     expect(() => SafeIdSchema.parse('../../private-state')).toThrow();
     expect(() => GuestProfileCreationIntentSchema.parse({ displayName: '   ' })).toThrow();
     expect(() => ClientHandshakeSchema.parse({ protocolVersion: 2 })).toThrow();
     expect(() =>
       HealthResponseSchema.parse({ service: 'TopThis Server', status: 'debug' }),
     ).toThrow();
+    for (const value of [
+      { displayName: 'Ari', botCount: 0 },
+      { displayName: 'Ari', botCount: 4 },
+      { displayName: 'Ari', botCount: 1, seed: 0 },
+      { displayName: 'Ari', botCount: 1, targetScore: 2 },
+      { displayName: 'Ari', botCount: 1, playerId: 'p2' },
+    ])
+      expect(() => PracticeCreateIntentSchema.parse(value)).toThrow();
+    expect(() =>
+      PracticeMatchViewSchema.parse({
+        ...view,
+        players: [{ ...view.players[0], hand: [card] }, view.players[1]],
+      }),
+    ).toThrow();
+  });
+
+  it('enforces strict acknowledgement variants', () => {
+    expect(PracticeAckSchema.parse({ ok: true, view })).toEqual({ ok: true, view });
+    expect(
+      PracticeAckSchema.parse({ ok: false, error: { code: 'INVALID_PAYLOAD', message: 'bad' } }),
+    ).toMatchObject({ ok: false });
+    expect(() => PracticeAckSchema.parse({ ok: true })).toThrow();
+    expect(() =>
+      PracticeAckSchema.parse({
+        ok: true,
+        view,
+        error: { code: 'INVALID_PAYLOAD', message: 'bad' },
+      }),
+    ).toThrow();
+    expect(() => PracticeAckSchema.parse({ ok: false })).toThrow();
   });
 });

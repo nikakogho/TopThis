@@ -5,9 +5,9 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Phase 2 — complete practice game (planning)
-- Last completed phase: Phase 1 — card content and deterministic engine
-- Last pushed phase commit: `4f6b39d` (Phase 0)
+- Active phase: Phase 3 — private online multiplayer (planning)
+- Last completed phase: Phase 2 — complete practice game
+- Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
@@ -91,6 +91,15 @@ engine 25 tests plus build/typecheck/lint`
 catalog retained; after two attempts authored tag expansion and rule text were
 still incomplete, so Sol performed the policy-authorized focused takeover |
 independent 23-definition/400-copy resolution check and engine content tests`
+- `terra_worker | Phase 2 recipient-safe contracts and authoritative practice
+server | passed after a focused hardening pass; all practice state, bot,
+timeout and round-advance actions serialize through the engine command path |
+3 shared tests, 9 server tests, builds, typecheck and scoped lint`
+- `luna_worker | Phase 2 React table, accessibility and Playwright flow | core
+screen/CSS work retained, but two attempts stopped after typecheck without the
+required unit/E2E coverage and left incorrect fallback/result behavior; Sol
+performed the policy-authorized bounded integration takeover | 5 web tests, 2
+Playwright flows run repeatedly, build/typecheck/lint/format and Browser checks`
 
 ## Phase 0 verification
 
@@ -202,8 +211,127 @@ independent 23-definition/400-copy resolution check and engine content tests`
   Lint passes after ignoring transient Playwright artifacts; the initial
   concurrent lint/E2E run exposed and fixed that generated-directory race.
 
+## Phase 2 delegation ledger
+
+### SOL DECISIONS
+
+- Practice mode remains server-authoritative. The web client opens one Socket.IO
+  session, requests a practice match and sends only play/skip intentions with
+  command ID, match ID, expected version/turn and selected instance ID.
+- The server maps each socket to its human player ID, loads the committed card
+  catalog, owns full engine state and emits recipient-specific views. Opponents
+  expose display name, captured count and hand count only; their cards and legal
+  moves never cross the boundary.
+- Establish reusable practice/multiplayer contracts now: public player/card/
+  match views and validated practice-create/play/skip events live in
+  `@topthis/shared`, while secret `MatchState` stays engine/server-only.
+- Active matches remain in memory. Each match has a promise-chain command queue
+  so human events, bot actions, timeout skips and round advances serialize in a
+  single deterministic order before the synchronous engine transition.
+- Server wall-clock timers wrap the pure engine. Every new playing turn cancels
+  the previous timer, publishes a deadline and submits a normal validated
+  timeout command if it expires. A late human/bot/timeout command loses through
+  expected-version/turn validation.
+- Bots call the same server command path as humans. A seeded bot decision stream
+  normally selects the least valuable legal card, sometimes skips, and assigns
+  a high conservation cost to Tornado/Meteor. Normal delay is short; injected
+  server options make tests immediate without adding engine shortcuts.
+- `round_result` is emitted for an overlay, then the server submits the normal
+  `advanceRound` command after a short configurable delay. Match completion
+  emits the same recipient view with explicit tied winner IDs.
+- The browser connects to `VITE_TOPTHIS_SERVER_URL` in development and same
+  origin in production. Test-only deterministic seed/target/timing are injected
+  through server construction or `TOPTHIS_E2E_*` environment values, never
+  trusted from normal client payloads.
+- The React shell becomes screen-based without adding a routing framework:
+  landing, practice setup and game/final states are sufficient for Phase 2.
+  Landing retains all required primary actions; unimplemented later-mode actions
+  are visibly marked rather than silently pretending to work.
+- Card selection is separate from confirmation. The server-provided legal-ID
+  list controls enabled state; keyboard arrows move focus, Enter selects or
+  confirms unambiguously, Escape cancels, and shortcuts ignore text inputs.
+- Missing `/cards/<id>.png` assets fall back to a deterministic presentational
+  card face containing name, rarity, symbol and accessible text. The fallback is
+  never game state.
+
+### TERRA TASKS
+
+- First implementation pass owns `packages/shared/**`, `apps/server/**` and the
+  functional React files/tests under `apps/web/src/**` except final CSS polish.
+- Implement validated recipient-safe contracts, in-memory practice-match
+  orchestration, serialized commands, timers, deterministic bots using the
+  engine command path, Socket.IO events, privacy/server integration tests and a
+  functional landing/setup/table/round/final React flow with selection and
+  keyboard behavior.
+- May update package manifests, lockfile and Playwright dev-server configuration
+  required by owned functionality. Do not implement guest persistence, lobbies,
+  matchmaking, ratings or SQLite. Do not change engine rules/content or spawn
+  subagents.
+- Definition of done: one human can start against one to three bots, see only
+  their hand, play/skip through complete rounds, receive timeout skips and finish
+  a full match; server tests prove privacy, authority and bot command-path use;
+  web unit tests prove screen and selection behavior.
+- Verification: filtered shared/server/web tests, builds and typechecks; scoped
+  lint; a live Socket practice smoke script.
+
+### LUNA TASKS
+
+- Follow-on pass after Terra's markup/contracts stabilize owns `apps/web/src/**`
+  CSS/presentational refinements, accessible fallback-card treatment,
+  accessibility cleanup, `apps/web/e2e/**` practice Playwright flow and Phase 2
+  visual-regression assertions. Do not change server/engine/shared contracts or
+  gameplay semantics.
+- Implement all rarity perimeter treatments, selected/playable/illegal states,
+  responsive desktop/mobile layouts, visible focus, reduced motion, text/icon
+  legality cues, status announcements and deterministic missing-art fallback.
+- Add a complete deterministic practice flow that selects then confirms a legal
+  card, skips, observes round result and reaches final result. Preserve failure
+  artifacts through Playwright configuration without committing generated
+  output. Do not spawn subagents.
+- Definition of done: automated practice flow passes and the deterministic table
+  states are stable enough for built-in Browser inspection on desktop/mobile.
+- Verification: web unit/build/typecheck/lint, Playwright practice flow and
+  screenshot assertions where deterministic.
+
+### TOO SMALL TO DELEGATE
+
+- Review public/private schemas, timer/queue race handling and bot authority;
+  decide any cross-system ambiguity and integrate non-overlapping worker passes.
+- Run the full workspace gate, start the real app, inspect every required Phase 2
+  card/table/overlay/final state in the built-in Browser, return observed defects
+  to the owning worker and reverify.
+- Update phase records, commit and push the passing Phase 2 result.
+
+## Phase 2 verification
+
+- Shared contracts validate practice creation and command intentions plus a
+  strict recipient-safe public match view. The view contains the local hand and
+  legal IDs only; opponents expose display names, hand counts and captured
+  counts. Nine server tests cover creation, privacy, malformed/forged commands,
+  stale and duplicate input, authority, bot actions, timeouts and round advance.
+- Practice orchestration uses one promise-chain queue per match. Human, bot,
+  timeout and delayed round-advance actions all submit normal versioned engine
+  commands, and every accepted transition reschedules exactly one turn path.
+- The React flow covers branded landing, practice setup, live table, explicit
+  Playable/Cannot beat states, separate select/confirm, arrow/Enter/Escape
+  operation, connection/status announcements, deterministic missing-art
+  fallbacks, round overlay and victory/defeat/tie-aware final results.
+- Five focused web tests pass. The deterministic Playwright flow starts the real
+  Fastify/Socket.IO and Vite processes, proves opponent privacy, selects and
+  confirms a legal card, observes a bot move, skips, sees a three-card round
+  result and reaches the final result. A table screenshot baseline uses a
+  20-pixel anti-aliasing tolerance and passed on consecutive independent runs.
+- Built-in Browser inspection passed for landing, setup, a real table, legal
+  Common/Rare/Epic/Legendary cards, illegal disabled cards, selected Legendary,
+  round and final overlays, desktop and 390x844 mobile. One observed laptop
+  issue placed confirmation below the initial hand; controls were moved above
+  the hand and reverified. Mobile document width remained exactly contained and
+  the hand scrolled independently.
+- Full workspace formatting, lint, typecheck, tests and build pass. Playwright
+  retains screenshot, trace, video and browser-console evidence on failure.
+
 ## Remaining non-blocking limitations
 
-- The deterministic card/rules foundation is complete. Practice bots and the
-  complete game table, private multiplayer, persistence, matchmaking, ratings,
-  leaderboard and final product polish remain for Phases 2 through 5.
+- Practice mode and the deterministic card/rules foundation are complete.
+  Guest identity, private multiplayer/reconnection, persistence, matchmaking,
+  ratings, leaderboard and final product polish remain for Phases 3 through 5.

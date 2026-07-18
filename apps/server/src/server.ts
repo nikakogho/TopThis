@@ -5,16 +5,20 @@ import fastifyStatic from '@fastify/static';
 import { Server as SocketIoServer } from 'socket.io';
 import { HealthResponseSchema } from '@topthis/shared';
 import { attachSocketBoundary } from './socket.js';
+import { PracticeService } from './practice.js';
 
 export interface CreateServerOptions {
   logger?: boolean | FastifyBaseLogger;
   serveClient?: boolean;
   clientDistPath?: string;
+  practice?: ConstructorParameters<typeof PracticeService>[0];
+  corsOrigin?: string | string[] | false;
 }
 
 export interface TopThisServer {
   app: FastifyInstance;
   io: SocketIoServer;
+  practice: PracticeService;
 }
 
 const defaultClientDistPath = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -36,9 +40,16 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
   );
 
   const io = new SocketIoServer(app.server, {
-    cors: { origin: false },
+    cors: {
+      origin:
+        options.corsOrigin ??
+        (process.env.NODE_ENV === 'production'
+          ? false
+          : ['http://localhost:5173', 'http://127.0.0.1:5173']),
+    },
   });
-  io.on('connection', attachSocketBoundary);
+  const practice = new PracticeService(options.practice);
+  io.on('connection', (socket) => attachSocketBoundary(socket, practice));
 
   if (options.serveClient) {
     const root = options.clientDistPath ?? defaultClientDistPath;
@@ -49,5 +60,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
     }
   }
 
-  return { app, io };
+  app.addHook('onClose', async () => {
+    practice.close();
+  });
+  return { app, io, practice };
 }
