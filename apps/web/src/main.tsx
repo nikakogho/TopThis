@@ -1,14 +1,26 @@
 import { StrictMode, useEffect, useState, type KeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
-import type { PracticeAck, PracticeMatchView } from '@topthis/shared';
+import {
+  GuestCreateResponseSchema,
+  GuestMeResponseSchema,
+  type Guest,
+  type LobbyLeaveAck,
+  type LobbyAck,
+  type LobbyView,
+  type PracticeAck,
+  type PracticeMatchView,
+  type PrivateMatchAck,
+  type PrivateMatchView,
+} from '@topthis/shared';
 import './styles.css';
 
 type Card = PracticeMatchView['hand'][number];
-type Screen = 'landing' | 'setup' | 'match';
+type Screen = 'landing' | 'setup' | 'identity' | 'host' | 'join' | 'lobby' | 'match';
 
 const socket = io(import.meta.env.VITE_TOPTHIS_SERVER_URL || undefined, {
   autoConnect: false,
+  auth: { guestToken: localStorage.getItem('topthis.guestToken') ?? undefined },
 }) as Socket;
 
 function isEditable(target: EventTarget | null): boolean {
@@ -54,11 +66,25 @@ function App() {
   const [screen, setScreen] = useState<Screen>('landing');
   const [name, setName] = useState('Player');
   const [bots, setBots] = useState(1);
-  const [view, setView] = useState<PracticeMatchView>();
+  const [practiceView, setView] = useState<PracticeMatchView>();
+  const [privateView, setPrivateView] = useState<PrivateMatchView>();
+  const [guest, setGuest] = useState<Guest>();
+  const [lobby, setLobby] = useState<LobbyView>();
+  const [mode, setMode] = useState<'practice' | 'private'>('practice');
+  const [guestName, setGuestName] = useState('Player');
+  const [pendingAction, setPendingAction] = useState<'host' | 'join'>('host');
+  const [joinCode, setJoinCode] = useState('');
+  const [settings, setSettings] = useState({
+    playerCount: 2,
+    targetScore: 50,
+    turnDurationSeconds: 20,
+  });
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(socket.connected);
   const [now, setNow] = useState(Date.now());
+  const view = mode === 'private' ? privateView : practiceView;
 
   useEffect(() => {
     const onState = (next: PracticeMatchView) => {
@@ -68,20 +94,154 @@ function App() {
         current && next.legalCardInstanceIds.includes(current) ? current : undefined,
       );
     };
+    const onLobby = (next: LobbyView) => {
+      setLobby(next);
+      setSettings(next.settings);
+      setScreen('lobby');
+    };
+    const onMatch = (next: PrivateMatchView) => {
+      setPrivateView(next);
+      setMode('private');
+      setScreen('match');
+    };
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     const onConnectError = () => setError('Could not connect to TopThis Server.');
     socket.on('practice:state', onState);
+    socket.on('lobby:state', onLobby);
+    socket.on('match:state', onMatch);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
     return () => {
       socket.off('practice:state', onState);
+      socket.off('lobby:state', onLobby);
+      socket.off('match:state', onMatch);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
     };
   }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('topthis.guestToken');
+    if (!token) return;
+    fetch('/api/guests/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (!r.ok) throw new Error('Saved guest session expired.');
+        return r.json();
+      })
+      .then((v) => {
+        const response = GuestMeResponseSchema.parse(v);
+        setGuest(response.guest);
+        socket.auth = { guestToken: token };
+        socket.connect();
+      })
+      .catch((reason: unknown) => {
+        localStorage.removeItem('topthis.guestToken');
+        socket.auth = {};
+        setGuest(undefined);
+        if (reason instanceof TypeError) setError('Could not validate the saved guest session.');
+      });
+  }, []);
+
+  const ensureGuest = async () => {
+    if (guest) return guest;
+    const token = localStorage.getItem('topthis.guestToken');
+    if (token) {
+      try {
+        const r = await fetch('/api/guests/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (r.ok) {
+          const response = GuestMeResponseSchema.parse(await r.json());
+          setGuest(response.guest);
+          socket.auth = { guestToken: token };
+          return response.guest;
+        }
+      } catch {
+        /* The user explicitly continued, so an invalid saved identity may be replaced below. */
+      }
+      localStorage.removeItem('topthis.guestToken');
+      socket.auth = {};
+    }
+    const r = await fetch('/api/guests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: guestName }),
+    });
+    if (!r.ok) throw new Error('Could not create the guest profile.');
+    const response = GuestCreateResponseSchema.parse(await r.json());
+    localStorage.setItem('topthis.guestToken', response.token);
+    socket.auth = { guestToken: response.token };
+    setGuest(response.guest);
+    return response.guest;
+  };
+  const openPrivate = (action: 'host' | 'join') => {
+    setPendingAction(action);
+    setScreen(guest ? action : 'identity');
+  };
+  const createLobby = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await ensureGuest();
+      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
+      socket.connect();
+      socket.emit('lobby:create', { settings }, (ack: LobbyAck) => {
+        setBusy(false);
+        if (ack.ok) {
+          setLobby(ack.view);
+          setScreen('lobby');
+        } else setError(ack.error.message);
+      });
+    } catch (reason) {
+      setBusy(false);
+      setError(reason instanceof Error ? reason.message : 'Could not create the lobby.');
+    }
+  };
+  const joinLobby = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await ensureGuest();
+      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
+      socket.connect();
+      socket.emit(
+        'lobby:join',
+        { code: joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '') },
+        (ack: LobbyAck) => {
+          setBusy(false);
+          if (ack.ok) {
+            setLobby(ack.view);
+            setScreen('lobby');
+          } else setError(ack.error.message);
+        },
+      );
+    } catch (reason) {
+      setBusy(false);
+      setError(reason instanceof Error ? reason.message : 'Could not join the lobby.');
+    }
+  };
+
+  const lobbyAction = (
+    event: 'lobby:ready' | 'lobby:settings' | 'lobby:start',
+    payload: unknown,
+  ) => {
+    setError('');
+    socket.emit(event, payload, (ack: LobbyAck) => {
+      if (ack.ok) setLobby(ack.view);
+      else setError(ack.error.message);
+    });
+  };
+
+  const leaveLobby = () => {
+    setError('');
+    socket.emit('lobby:leave', {}, (ack: LobbyLeaveAck) => {
+      if (ack.ok) {
+        setLobby(undefined);
+        setScreen('landing');
+      } else setError(ack.error.message);
+    });
+  };
 
   useEffect(() => {
     if (!view?.turnEndsAt || view.phase !== 'playing') return;
@@ -111,13 +271,23 @@ function App() {
       expectedTurnId: view.turnId,
       ...(type === 'play' ? { cardInstanceId: selected } : {}),
     };
-    socket.emit(`practice:${type}`, payload, (ack: PracticeAck) => {
-      if (ack.ok) setView(ack.view);
-      else {
-        if (ack.view) setView(ack.view);
+    const applyAck = (ack: PracticeAck | PrivateMatchAck) => {
+      if (ack.ok) {
+        if (mode === 'private') setPrivateView(ack.view as PrivateMatchView);
+        else setView(ack.view);
+      } else {
+        if (ack.view) {
+          if (mode === 'private') setPrivateView(ack.view as PrivateMatchView);
+          else setView(ack.view);
+        }
         setError(ack.error.message);
       }
-    });
+    };
+    if (mode === 'private') {
+      socket.emit(`match:${type}`, payload, (ack: PrivateMatchAck) => applyAck(ack));
+    } else {
+      socket.emit(`practice:${type}`, payload, (ack: PracticeAck) => applyAck(ack));
+    }
     setSelected(undefined);
   };
 
@@ -132,13 +302,210 @@ function App() {
         </p>
         <div className="actions">
           <button onClick={() => setScreen('setup')}>Practice</button>
-          {['Host Game', 'Join Game', 'Find Match', 'Leaderboard', 'How to Play'].map((label) => (
+          <button onClick={() => openPrivate('host')}>Host Game</button>
+          <button onClick={() => openPrivate('join')}>Join Game</button>
+          {['Find Match', 'Leaderboard', 'How to Play'].map((label) => (
             <button className="muted" disabled key={label}>
               {label}
               <small>Coming soon</small>
             </button>
           ))}
         </div>
+      </main>
+    );
+  }
+
+  if (screen === 'identity')
+    return (
+      <main className="setup">
+        <p className="eyebrow">GUEST PROFILE</p>
+        <h1>Choose a display name</h1>
+        <label>
+          Display name
+          <input value={guestName} maxLength={24} onChange={(e) => setGuestName(e.target.value)} />
+        </label>
+        <button
+          disabled={!guestName.trim() || busy}
+          onClick={async () => {
+            setBusy(true);
+            setError('');
+            try {
+              await ensureGuest();
+              setScreen(pendingAction);
+            } catch (reason) {
+              setError(reason instanceof Error ? reason.message : 'Could not create the guest.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Creating guest…' : 'Continue'}
+        </button>
+        {error && <p role="alert">{error}</p>}
+        <button className="link" onClick={() => setScreen('landing')}>
+          Back
+        </button>
+      </main>
+    );
+  if (screen === 'host' || screen === 'join')
+    return (
+      <main className="setup">
+        <p className="eyebrow">PRIVATE GAME</p>
+        <h1>{screen === 'host' ? 'Host a lobby' : 'Join a lobby'}</h1>
+        {screen === 'host' ? (
+          <>
+            <label>
+              Players
+              <select
+                value={settings.playerCount}
+                onChange={(e) => setSettings({ ...settings, playerCount: Number(e.target.value) })}
+              >
+                {[2, 3, 4].map((n) => (
+                  <option key={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Target score
+              <input
+                type="number"
+                min="10"
+                max="200"
+                value={settings.targetScore}
+                onChange={(e) => setSettings({ ...settings, targetScore: Number(e.target.value) })}
+              />
+            </label>
+            <label>
+              Turn timer
+              <input
+                type="number"
+                min="5"
+                max="60"
+                value={settings.turnDurationSeconds}
+                onChange={(e) =>
+                  setSettings({ ...settings, turnDurationSeconds: Number(e.target.value) })
+                }
+              />
+            </label>
+            <button disabled={busy} onClick={createLobby}>
+              {busy ? 'Creating lobby…' : 'Create lobby'}
+            </button>
+          </>
+        ) : (
+          <>
+            <label>
+              Join code
+              <input
+                aria-label="Join code"
+                value={joinCode}
+                maxLength={6}
+                onChange={(e) =>
+                  setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                }
+              />
+            </label>
+            <button disabled={joinCode.length !== 6 || busy} onClick={joinLobby}>
+              {busy ? 'Joining…' : 'Join lobby'}
+            </button>
+          </>
+        )}
+        {error && <p role="alert">{error}</p>}
+        <button className="link" onClick={() => setScreen('landing')}>
+          Back
+        </button>
+      </main>
+    );
+  if (screen === 'lobby' && lobby) {
+    const isHost = guest?.id === lobby.hostGuestId;
+    const localPlayer = lobby.players.find((player) => player.guest.id === guest?.id);
+    const canStart =
+      isHost &&
+      lobby.players.length === lobby.settings.playerCount &&
+      lobby.players.every((player) => player.ready && player.connected);
+    return (
+      <main className="setup lobby-screen">
+        <p className="eyebrow">PRIVATE LOBBY</p>
+        <h1>Code: {lobby.code}</h1>
+        <p className="lobby-code-help">Share this six-character code with your table.</p>
+        <p aria-live="polite">{connected ? 'Connected' : 'Reconnecting'}</p>
+        <ul className="lobby-players" aria-label="Lobby players">
+          {lobby.players.map((player) => (
+            <li key={player.guest.id}>
+              <strong>{player.guest.displayName}</strong>
+              {player.guest.id === lobby.hostGuestId && <span>Host</span>}
+              <span>{player.ready ? 'Ready' : 'Not ready'}</span>
+              <span>{player.connected ? 'Connected' : 'Disconnected'}</span>
+            </li>
+          ))}
+        </ul>
+        <section className="lobby-settings" aria-label="Lobby settings">
+          <h2>Match settings</h2>
+          {isHost ? (
+            <>
+              <label>
+                Players
+                <select
+                  value={settings.playerCount}
+                  onChange={(event) =>
+                    setSettings({ ...settings, playerCount: Number(event.target.value) })
+                  }
+                >
+                  {[2, 3, 4].map((count) => (
+                    <option key={count}>{count}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Target score
+                <input
+                  type="number"
+                  min="10"
+                  max="200"
+                  value={settings.targetScore}
+                  onChange={(event) =>
+                    setSettings({ ...settings, targetScore: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                Turn timer
+                <input
+                  type="number"
+                  min="5"
+                  max="60"
+                  value={settings.turnDurationSeconds}
+                  onChange={(event) =>
+                    setSettings({ ...settings, turnDurationSeconds: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <button onClick={() => lobbyAction('lobby:settings', { settings })}>
+                Update settings
+              </button>
+            </>
+          ) : (
+            <p>
+              {lobby.settings.playerCount} players · First to {lobby.settings.targetScore} ·{' '}
+              {lobby.settings.turnDurationSeconds}s turns
+            </p>
+          )}
+        </section>
+        <div className="lobby-actions">
+          <button
+            onClick={() => lobbyAction('lobby:ready', { ready: !(localPlayer?.ready ?? false) })}
+          >
+            {localPlayer?.ready ? 'Not ready' : 'Ready up'}
+          </button>
+          {isHost && (
+            <button disabled={!canStart} onClick={() => lobbyAction('lobby:start', {})}>
+              Start Match
+            </button>
+          )}
+          <button className="link" onClick={leaveLobby}>
+            Leave lobby
+          </button>
+        </div>
+        {error && <p role="alert">{error}</p>}
       </main>
     );
   }
@@ -211,9 +578,9 @@ function App() {
   return (
     <main className="table" onKeyDown={onTableKeyDown}>
       <header className="table-header">
-        <span className="eyebrow">TOPTHIS / PRACTICE</span>
+        <span className="eyebrow">TOPTHIS / {mode === 'private' ? 'PRIVATE' : 'PRACTICE'}</span>
         <span className={`connection ${connected ? 'online' : ''}`}>
-          <span aria-hidden="true">●</span> {connected ? 'Connected' : 'Connecting'}
+          <span aria-hidden="true">●</span> {connected ? 'Connected' : 'Reconnecting'}
         </span>
       </header>
       <div className="sr-only" aria-live="polite">
@@ -230,6 +597,15 @@ function App() {
               <strong>{player.displayName}</strong>
               <span>{player.handCount} cards in hand</span>
               <span>{player.capturedCardCount} captured</span>
+              {mode === 'private' && (
+                <span>
+                  {(player as PrivateMatchView['players'][number]).abandoned
+                    ? 'Abandoned'
+                    : (player as PrivateMatchView['players'][number]).connected
+                      ? 'Connected'
+                      : 'Disconnected'}
+                </span>
+              )}
             </article>
           ))}
       </section>
@@ -343,17 +719,25 @@ function App() {
                 ? `${view.roundResult.pileCount} cards captured.`
                 : 'The final round is complete.'}
             </p>
+            {mode === 'private' && view.phase === 'completed' && privateView?.placements && (
+              <p>
+                Final place: {privateView.placements.indexOf(privateView.yourPlayerId) + 1} of{' '}
+                {privateView.placements.length}
+              </p>
+            )}
             {view.phase === 'round_result' ? (
               <p>Dealing the next challenge…</p>
             ) : (
               <button
                 onClick={() => {
                   setView(undefined);
+                  setPrivateView(undefined);
                   setSelected(undefined);
-                  setScreen('setup');
+                  setMode('practice');
+                  setScreen(mode === 'private' ? 'landing' : 'setup');
                 }}
               >
-                New practice
+                {mode === 'private' ? 'Return home' : 'New practice'}
               </button>
             )}
           </section>

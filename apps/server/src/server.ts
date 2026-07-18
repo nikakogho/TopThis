@@ -6,6 +6,13 @@ import { Server as SocketIoServer } from 'socket.io';
 import { HealthResponseSchema } from '@topthis/shared';
 import { attachSocketBoundary } from './socket.js';
 import { PracticeService } from './practice.js';
+import { SqliteGuestRepository, type GuestRepository } from './guests.js';
+import { PrivateService } from './private.js';
+import {
+  GuestProfileCreationIntentSchema,
+  GuestCreateResponseSchema,
+  GuestMeResponseSchema,
+} from '@topthis/shared';
 
 export interface CreateServerOptions {
   logger?: boolean | FastifyBaseLogger;
@@ -13,12 +20,17 @@ export interface CreateServerOptions {
   clientDistPath?: string;
   practice?: ConstructorParameters<typeof PracticeService>[0];
   corsOrigin?: string | string[] | false;
+  databasePath?: string;
+  guests?: GuestRepository;
+  private?: ConstructorParameters<typeof PrivateService>[0];
 }
 
 export interface TopThisServer {
   app: FastifyInstance;
   io: SocketIoServer;
   practice: PracticeService;
+  guests: GuestRepository;
+  private: PrivateService;
 }
 
 const defaultClientDistPath = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -34,6 +46,11 @@ async function pathExists(path: string): Promise<boolean> {
 
 export async function createServer(options: CreateServerOptions = {}): Promise<TopThisServer> {
   const app = fastify({ logger: options.logger ?? false });
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof Error && error.name === 'ZodError')
+      return reply.code(400).send({ error: 'Invalid request' });
+    return reply.send(error);
+  });
 
   app.get('/health', async () =>
     HealthResponseSchema.parse({ service: 'TopThis Server', status: 'ok' }),
@@ -49,7 +66,28 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
     },
   });
   const practice = new PracticeService(options.practice);
-  io.on('connection', (socket) => attachSocketBoundary(socket, practice));
+  const guests = options.guests ?? new SqliteGuestRepository(options.databasePath);
+  const privateService = new PrivateService(options.private);
+  app.post('/api/guests', async (request) => {
+    const intent = GuestProfileCreationIntentSchema.parse(request.body);
+    return GuestCreateResponseSchema.parse(guests.create(intent.displayName));
+  });
+  app.get('/api/guests/me', async (request, reply) => {
+    const token = request.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+    const guest = token && guests.findByToken(token);
+    if (!guest) return reply.code(401).send({ error: 'Unauthorized' });
+    return GuestMeResponseSchema.parse({ guest });
+  });
+  io.use((socket, next) => {
+    const token =
+      typeof socket.handshake.auth.guestToken === 'string'
+        ? socket.handshake.auth.guestToken
+        : undefined;
+    const guest = token && guests.findByToken(token);
+    if (guest) socket.data.guest = guest;
+    next(); // unauthenticated practice sockets remain valid
+  });
+  io.on('connection', (socket) => attachSocketBoundary(socket, practice, privateService));
 
   if (options.serveClient) {
     const root = options.clientDistPath ?? defaultClientDistPath;
@@ -62,6 +100,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
 
   app.addHook('onClose', async () => {
     practice.close();
+    privateService.close();
+    guests.close();
   });
-  return { app, io, practice };
+  return { app, io, practice, guests, private: privateService };
 }

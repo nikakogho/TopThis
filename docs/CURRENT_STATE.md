@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Phase 3 — private online multiplayer (planning)
-- Last completed phase: Phase 2 — complete practice game
+- Active phase: Phase 4 — matchmaking, ratings and leaderboard (planning)
+- Last completed phase: Phase 3 — private online multiplayer
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -100,6 +100,20 @@ screen/CSS work retained, but two attempts stopped after typecheck without the
 required unit/E2E coverage and left incorrect fallback/result behavior; Sol
 performed the policy-authorized bounded integration takeover | 5 web tests, 2
 Playwright flows run repeatedly, build/typecheck/lint/format and Browser checks`
+- `terra_worker | Phase 3 guest persistence, private server and integration |
+core guest/lobby/match/reconnect implementation retained, but two attempts did
+not add the required real multi-client integration matrix; Sol performed the
+policy-authorized test and race-hardening takeover | 1 guest repository test, 5
+real HTTP/Socket.IO private integration tests, 9 existing server tests, repeated
+server tests/build/typecheck/lint`
+- `luna_worker | Phase 3 guest/lobby/private React flow | functional UI retained,
+but two attempts did not add Phase 3-focused tests; Sol performed the
+policy-authorized client test/styling takeover | 10 web tests plus
+build/typecheck/lint/format and desktop/mobile Browser checks`
+- `terra_worker | Phase 3 three-context Playwright follow-up | full real browser
+flow delivered on the second pass; Sol replaced a fixed-attempt Socket.IO race
+after repeat verification exposed it | 3 Playwright tests, including complete
+three-player match, passed in two consecutive full runs`
 
 ## Phase 0 verification
 
@@ -330,8 +344,126 @@ Playwright flows run repeatedly, build/typecheck/lint/format and Browser checks`
 - Full workspace formatting, lint, typecheck, tests and build pass. Playwright
   retains screenshot, trace, video and browser-console evidence on failure.
 
+## Phase 3 delegation ledger
+
+### SOL DECISIONS
+
+- Use `better-sqlite3` 12.x for the local MVP database. Its maintained 12.x
+  line explicitly supports Node 24 and prebuilt Windows binaries. Phase 3
+  introduces only guest identity tables; match/rating persistence follows in
+  Phase 4 through the same database boundary.
+- The server issues 32-byte random base64url guest tokens and stores only their
+  SHA-256 hashes. `POST /api/guests` creates a sanitized display name and opaque
+  guest ID; authenticated HTTP and multiplayer sockets accept the token, never
+  a client-supplied player ID. The browser stores the token locally for this
+  anonymous local MVP.
+- Keep lobbies and active matches in memory. Six-character codes use an
+  unambiguous uppercase alphabet and are unique among live lobbies. Codes are
+  normalized on input and are not authentication credentials.
+- Lobby settings are player count 2-4, target score 10-200 and turn duration
+  5-60 seconds. Only the host may update settings or start. Every occupied seat,
+  including the host, must be ready and the lobby must contain exactly its
+  configured player count before start.
+- Bind one guest to at most one live lobby/match and one active socket. A newer
+  authenticated connection replaces the older socket. Lobby disconnects hold a
+  seat for the 60-second grace period, then remove it before match start.
+- An active match preserves its engine player forever; reconnecting with the
+  same token inside the grace period reclaims the same private hand and receives
+  a current recipient view. A disconnected turn still expires through the
+  normal timeout command. After grace expiry the seat becomes abandoned and
+  continues to auto-skip so the remaining players can complete the match.
+- Each active private match owns one serialized command queue and timer set.
+  Every play, skip and timeout includes command/match/version/turn identity and
+  uses the existing deterministic engine. Public broadcasts are materialized
+  separately per recipient so hands and legal IDs never cross seats.
+- Completion remains in memory in Phase 3. Phase 4 will transactionally persist
+  the result and apply Elo exactly once; Phase 3 must expose a stable match ID,
+  ordered public placements/winners and command log to that future boundary.
+- Extend shared Zod schemas with guest/lobby/authenticated-match event contracts
+  only. Full engine state, token hashes, raw tokens, socket maps, timers and
+  command queues remain server-only.
+- Reuse the Phase 2 table presentation for private matches. Guest setup precedes
+  Host/Join, lobby screens expose host/settings/ready/connectivity, and a
+  reconnecting client visibly reports its state without revealing opponents.
+
+### TERRA TASKS
+
+- First pass owns `packages/shared/**`, `apps/server/**`, server package/lock
+  dependencies and server-focused tests for Phase 3.
+- Implement the SQLite guest repository/migration, token hashing and guest HTTP
+  routes; authenticated Socket.IO handshake; in-memory lobby lifecycle,
+  authorization/settings/readiness; private match start and per-recipient
+  serialization; queued versioned play/skip/timeout; disconnect grace,
+  reconnection and abandoned-seat auto-skip.
+- Preserve working practice behavior and avoid changing deterministic engine
+  semantics or content. Do not implement ratings, leaderboard, matchmaking, UI,
+  Phase 4 result persistence or spawn subagents.
+- Definition of done: guest tokens survive server repository reopen; three
+  authenticated sockets can create/join/ready/start; each receives only its own
+  hand/legal IDs; forged/stale/duplicate/unauthenticated actions fail; timeout,
+  disconnect and same-token reconnect work; completed view is usable by Phase 4.
+- Verification: filtered shared/server builds, typechecks and tests, scoped lint,
+  plus a live three-client Socket.IO smoke script using an in-memory database.
+- Follow-up after the UI stabilizes owns `apps/web/e2e/**` private multiplayer
+  Playwright coverage and any localized server bug found by that flow.
+
+### LUNA TASKS
+
+- Follow-on after Terra stabilizes contracts owns `apps/web/src/**` guest,
+  host/join lobby and private-table UI plus focused web tests and CSS refinements.
+- Implement token persistence, guest setup, lobby code/settings/ready/start
+  controls with host-only states, connection/reconnection messaging and reuse of
+  the existing accessible card/table/result components without duplicating
+  shared contracts.
+- Do not edit server/shared/engine/content, invent event semantics, add auth
+  providers or spawn subagents.
+- Definition of done: the landing actions work; anonymous identity persists on
+  refresh; host and join screens reflect authorization/readiness/connectivity;
+  private match uses the existing legal/illegal/select-confirm table behavior;
+  focused web tests pass at desktop and mobile widths.
+- Verification: filtered web tests/build/typecheck, scoped lint and a live
+  two-tab manual socket/UI smoke before Terra's isolated-context Playwright pass.
+
+### TOO SMALL TO DELEGATE
+
+- Review token storage, SQLite lifecycle, lobby authorization, recipient-safe
+  serialization and reconnect/timer race behavior.
+- Apply tiny integration/config corrections, update worker records, run the full
+  gate, inspect the private lobby/table in Browser, commit and push Phase 3.
+
+## Phase 3 verification
+
+- Guest tokens are 32 random bytes encoded as base64url; SQLite stores only a
+  SHA-256 hash. Repository reopen preserves guest identity, invalid tokens are
+  rejected, HTTP boundary validation returns 400, and authenticated identity
+  never accepts a client player ID.
+- Five real multi-client server tests cover guest HTTP auth, lobby code and host
+  authorization, ready/start, host transfer and cleanup, three recipient-safe
+  hands, forged/stale/duplicate actions, normal timeouts, exact-hand reconnect,
+  expired reconnect, abandoned auto-skip and match completion/placements.
+- Private lobby and active-match state are server-authoritative and in memory.
+  Each match serializes commands, timers and round advancement; opening and
+  subsequent views carry an authoritative deadline, and a newer token-authenticated
+  socket safely replaces a stale socket without surrendering the seat.
+- Ten React tests cover practice plus token resume/expiry, anonymous guest
+  creation, host/join code flows, host-only settings, ready/start gating, leave
+  acknowledgement, public opponent state and private play/skip events.
+- The real Playwright suite uses three isolated browser contexts to create and
+  join a lobby, gate start on readiness, inspect recipient-local hands, take a
+  legal action, reload with the same token and exact hand, observe a server
+  timeout, drive accelerated rounds through the UI and verify all three final
+  placements. All three Playwright tests passed in two consecutive full runs.
+- Built-in Browser inspection passed for the private lobby at 1280x720 and
+  390x844. The mobile layout stacks settings, keeps status text and actions
+  readable, and has no horizontal overflow. A suspicious full-page capture was
+  checked against element bounds and a normal viewport capture and confirmed to
+  be a capture artifact rather than clipping.
+- Full workspace build, type checking, unit/integration tests and lint pass.
+  Formatting passes after generated Playwright failure artifacts are excluded by
+  the existing ignore rules.
+
 ## Remaining non-blocking limitations
 
-- Practice mode and the deterministic card/rules foundation are complete.
-  Guest identity, private multiplayer/reconnection, persistence, matchmaking,
-  ratings, leaderboard and final product polish remain for Phases 3 through 5.
+- Practice, guest identity and private multiplayer/reconnection are complete.
+  Completed-match persistence, matchmaking, ratings, leaderboard and final
+  product/operational polish remain for Phases 4 and 5.

@@ -38,7 +38,17 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
 export const SocketErrorSchema = z
   .object({
-    code: z.enum(['INVALID_PAYLOAD', 'NO_SESSION', 'COMMAND_REJECTED']),
+    code: z.enum([
+      'INVALID_PAYLOAD',
+      'NO_SESSION',
+      'COMMAND_REJECTED',
+      'AUTH_REQUIRED',
+      'ALREADY_ACTIVE',
+      'LOBBY_UNAVAILABLE',
+      'NOT_HOST',
+      'NOT_READY',
+      'RECONNECT_EXPIRED',
+    ]),
     message: z.string().min(1),
   })
   .strict();
@@ -127,3 +137,85 @@ export const PracticeAckSchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 export type PracticeAck = z.infer<typeof PracticeAckSchema>;
+
+/** Anonymous local identity. Tokens are deliberately only present in this response. */
+export const GuestSchema = z.object({ id: SafeIdSchema, displayName: DisplayNameSchema }).strict();
+export type Guest = z.infer<typeof GuestSchema>;
+export const GuestCreateResponseSchema = z
+  .object({ guest: GuestSchema, token: z.string().min(32) })
+  .strict();
+export type GuestCreateResponse = z.infer<typeof GuestCreateResponseSchema>;
+export const GuestMeResponseSchema = z.object({ guest: GuestSchema }).strict();
+export type GuestMeResponse = z.infer<typeof GuestMeResponseSchema>;
+
+export const LobbyCodeSchema = z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
+export const LobbySettingsSchema = z
+  .object({
+    playerCount: z.number().int().min(2).max(4),
+    targetScore: z.number().int().min(10).max(200),
+    turnDurationSeconds: z.number().int().min(5).max(60),
+  })
+  .strict();
+export type LobbySettings = z.infer<typeof LobbySettingsSchema>;
+export const LobbyPlayerViewSchema = z
+  .object({ guest: GuestSchema, ready: z.boolean(), connected: z.boolean() })
+  .strict();
+export const LobbyViewSchema = z
+  .object({
+    code: LobbyCodeSchema,
+    hostGuestId: SafeIdSchema,
+    settings: LobbySettingsSchema,
+    players: z.array(LobbyPlayerViewSchema).min(1).max(4),
+    started: z.boolean(),
+  })
+  .strict();
+export type LobbyView = z.infer<typeof LobbyViewSchema>;
+export const LobbyCreateIntentSchema = z
+  .object({ settings: LobbySettingsSchema.optional() })
+  .strict();
+export const LobbyJoinIntentSchema = z.object({ code: z.string().min(1).max(16) }).strict();
+export const LobbySettingsIntentSchema = z.object({ settings: LobbySettingsSchema }).strict();
+export const LobbyReadyIntentSchema = z.object({ ready: z.boolean() }).strict();
+export const LobbyLeaveIntentSchema = z.object({}).strict();
+export const LobbyAckSchema = z.discriminatedUnion('ok', [
+  z
+    .object({ ok: z.literal(true), view: LobbyViewSchema, matchId: SafeIdSchema.optional() })
+    .strict(),
+  z
+    .object({ ok: z.literal(false), error: SocketErrorSchema, view: LobbyViewSchema.optional() })
+    .strict(),
+]);
+export type LobbyAck = z.infer<typeof LobbyAckSchema>;
+export const LobbyLeaveAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }).strict(),
+  z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
+]);
+export type LobbyLeaveAck = z.infer<typeof LobbyLeaveAckSchema>;
+
+export const PrivateMatchViewSchema = PracticeMatchViewSchema.extend({
+  players: z
+    .array(
+      PracticePlayerViewSchema.extend({
+        isBot: z.literal(false),
+        connected: z.boolean(),
+        abandoned: z.boolean(),
+      }),
+    )
+    .min(2)
+    .max(4),
+  placements: z.array(SafeIdSchema).optional(),
+}).strict();
+export type PrivateMatchView = z.infer<typeof PrivateMatchViewSchema>;
+export const PrivatePlayIntentSchema = PracticePlayIntentSchema;
+export const PrivateSkipIntentSchema = PracticeSkipIntentSchema;
+export const PrivateMatchAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), view: PrivateMatchViewSchema }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      view: PrivateMatchViewSchema.optional(),
+      error: SocketErrorSchema,
+    })
+    .strict(),
+]);
+export type PrivateMatchAck = z.infer<typeof PrivateMatchAckSchema>;

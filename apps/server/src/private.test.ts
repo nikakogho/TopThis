@@ -1,0 +1,380 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
+import {
+  GuestCreateResponseSchema,
+  type GuestCreateResponse,
+  type LobbyAck,
+  type LobbyLeaveAck,
+  type PrivateMatchAck,
+  type PrivateMatchView,
+} from '@topthis/shared';
+import { createServer, type TopThisServer } from './server.js';
+
+type PrivateOptions = NonNullable<Parameters<typeof createServer>[0]>['private'];
+
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+function waitForEvent<T>(
+  socket: ClientSocket,
+  event: string,
+  predicate: (value: T) => boolean,
+  timeoutMs = 1_000,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off(event, listener);
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, timeoutMs);
+    const listener = (value: T) => {
+      if (!predicate(value)) return;
+      clearTimeout(timeout);
+      socket.off(event, listener);
+      resolve(value);
+    };
+    socket.on(event, listener);
+  });
+}
+
+function emitAck<T>(socket: ClientSocket, event: string, payload: unknown): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Timed out acknowledging ${event}`)), 1_000);
+    socket.emit(event, payload, (value: T) => {
+      clearTimeout(timeout);
+      resolve(value);
+    });
+  });
+}
+
+async function eventually<T>(read: () => T | undefined, timeoutMs = 1_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = read();
+    if (value !== undefined) return value;
+    await delay(2);
+  }
+  throw new Error('Timed out waiting for state');
+}
+
+describe('private multiplayer integration', () => {
+  let server: TopThisServer | undefined;
+  let baseUrl = '';
+  const clients: ClientSocket[] = [];
+
+  afterEach(async () => {
+    for (const client of clients.splice(0)) client.close();
+    if (server) {
+      await server.io.close();
+      await server.app.close();
+      server = undefined;
+    }
+  });
+
+  async function start(options: PrivateOptions = {}): Promise<void> {
+    server = await createServer({
+      databasePath: ':memory:',
+      private: { seed: 0, ...options },
+    });
+    await server.app.listen({ port: 0, host: '127.0.0.1' });
+    const address = server.app.server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected TCP server address');
+    baseUrl = `http://127.0.0.1:${address.port}`;
+  }
+
+  async function createGuest(displayName: string): Promise<GuestCreateResponse> {
+    if (!server) throw new Error('Server not started');
+    const response = await server.app.inject({
+      method: 'POST',
+      url: '/api/guests',
+      payload: { displayName },
+    });
+    expect(response.statusCode).toBe(200);
+    return GuestCreateResponseSchema.parse(response.json());
+  }
+
+  async function connect(
+    token?: string,
+    initialEvent?: 'lobby:state' | 'match:state',
+  ): Promise<{ socket: ClientSocket; initial?: Promise<unknown> }> {
+    const socket = clientIo(baseUrl, {
+      autoConnect: false,
+      transports: ['websocket'],
+      auth: token ? { guestToken: token } : {},
+      reconnection: false,
+    });
+    clients.push(socket);
+    const initial = initialEvent
+      ? waitForEvent<unknown>(socket, initialEvent, () => true)
+      : undefined;
+    const connected = new Promise<void>((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+    });
+    socket.connect();
+    await connected;
+    return { socket, initial };
+  }
+
+  async function makeLobby(
+    count: 2 | 3,
+    options: PrivateOptions,
+  ): Promise<{
+    guests: GuestCreateResponse[];
+    sockets: ClientSocket[];
+    states: PrivateMatchView[];
+  }> {
+    await start(options);
+    const guests = await Promise.all(
+      Array.from({ length: count }, (_, index) => createGuest(`Player ${index + 1}`)),
+    );
+    const sockets: ClientSocket[] = [];
+    for (const guest of guests) sockets.push((await connect(guest.token)).socket);
+    const created = await emitAck<LobbyAck>(sockets[0]!, 'lobby:create', {
+      settings: { playerCount: count, targetScore: 10, turnDurationSeconds: 5 },
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    for (let index = 1; index < count; index++) {
+      const joined = await emitAck<LobbyAck>(sockets[index]!, 'lobby:join', {
+        code: created.view.code.toLowerCase(),
+      });
+      expect(joined.ok).toBe(true);
+    }
+    for (const socket of sockets) {
+      const ready = await emitAck<LobbyAck>(socket, 'lobby:ready', { ready: true });
+      expect(ready.ok).toBe(true);
+    }
+    const statePromises = sockets.map((socket) =>
+      waitForEvent<PrivateMatchView>(socket, 'match:state', () => true),
+    );
+    const started = await emitAck<LobbyAck>(sockets[0]!, 'lobby:start', {});
+    expect(started.ok).toBe(true);
+    return { guests, sockets, states: await Promise.all(statePromises) };
+  }
+
+  it('validates guest HTTP identity and rejects unauthenticated private events', async () => {
+    await start();
+    if (!server) throw new Error('Server not started');
+    expect(
+      (
+        await server.app.inject({
+          method: 'POST',
+          url: '/api/guests',
+          payload: { displayName: '!!!' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const issued = await createGuest('Ada');
+    const me = await server.app.inject({
+      method: 'GET',
+      url: '/api/guests/me',
+      headers: { authorization: `Bearer ${issued.token}` },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toEqual({ guest: issued.guest });
+    expect(JSON.stringify(me.json())).not.toContain(issued.token);
+    expect((await server.app.inject({ method: 'GET', url: '/api/guests/me' })).statusCode).toBe(
+      401,
+    );
+
+    const anonymous = (await connect()).socket;
+    expect(await emitAck<LobbyAck>(anonymous, 'lobby:create', {})).toMatchObject({
+      ok: false,
+      error: { code: 'AUTH_REQUIRED' },
+    });
+  });
+
+  it('enforces lobby authorization and transfers host after disconnect grace', async () => {
+    await start({ disconnectGraceMs: 20 });
+    const host = await createGuest('Host');
+    const joiner = await createGuest('Joiner');
+    const hostSocket = (await connect(host.token)).socket;
+    const joinerSocket = (await connect(joiner.token)).socket;
+    expect(await emitAck<LobbyAck>(joinerSocket, 'lobby:join', { code: 'ABCDEF' })).toMatchObject({
+      ok: false,
+      error: { code: 'LOBBY_UNAVAILABLE' },
+    });
+    const created = await emitAck<LobbyAck>(hostSocket, 'lobby:create', {
+      settings: { playerCount: 2, targetScore: 10, turnDurationSeconds: 5 },
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    expect(
+      await emitAck<LobbyAck>(joinerSocket, 'lobby:join', { code: created.view.code }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await emitAck<LobbyAck>(joinerSocket, 'lobby:settings', {
+        settings: { playerCount: 2, targetScore: 20, turnDurationSeconds: 5 },
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'NOT_HOST' } });
+    expect(await emitAck<LobbyAck>(joinerSocket, 'lobby:start', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_HOST' },
+    });
+
+    const transferred = waitForEvent<import('@topthis/shared').LobbyView>(
+      joinerSocket,
+      'lobby:state',
+      (view) => view.players.length === 1,
+    );
+    hostSocket.close();
+    const view = await transferred;
+    expect(view.hostGuestId).toBe(joiner.guest.id);
+    expect(view.players[0]?.guest.id).toBe(joiner.guest.id);
+    expect(await emitAck<LobbyLeaveAck>(joinerSocket, 'lobby:leave', {})).toEqual({ ok: true });
+    expect(await emitAck<LobbyAck>(joinerSocket, 'lobby:create', {})).toMatchObject({ ok: true });
+  });
+
+  it('keeps three private hands isolated, survives socket replacement, and completes', async () => {
+    const { guests, sockets, states } = await makeLobby(3, {
+      targetScore: 3,
+      turnDurationMs: 500,
+      roundResultDelayMs: 15,
+      disconnectGraceMs: 100,
+    });
+    const byGuest = new Map(guests.map((guest, index) => [guest.guest.id, sockets[index]!]));
+    let latest = states[0]!;
+    for (const socket of sockets) {
+      socket.on('match:state', (view: PrivateMatchView) => {
+        if (view.stateVersion >= latest.stateVersion) latest = view;
+      });
+    }
+
+    for (const state of states) {
+      expect(state.hand).toHaveLength(10);
+      expect(state.players).toHaveLength(3);
+      const ownIds = new Set(state.hand.map((card) => card.instanceId));
+      for (const other of states.filter(
+        (candidate) => candidate.yourPlayerId !== state.yourPlayerId,
+      )) {
+        expect(other.hand.some((card) => ownIds.has(card.instanceId))).toBe(false);
+      }
+      for (const player of state.players) {
+        expect(player).not.toHaveProperty('hand');
+        expect(player).not.toHaveProperty('legalCardInstanceIds');
+      }
+    }
+
+    const current = states.find((state) => state.yourPlayerId === state.currentPlayerId)!;
+    const currentSocket = byGuest.get(current.yourPlayerId)!;
+    const opponentCard = states.find((state) => state.yourPlayerId !== current.yourPlayerId)!
+      .hand[0]!;
+    const forgedPayload = {
+      commandId: 'forged1',
+      matchId: current.matchId,
+      expectedStateVersion: current.stateVersion,
+      expectedTurnId: current.turnId!,
+      cardInstanceId: opponentCard.instanceId,
+    };
+    expect(
+      await emitAck<PrivateMatchAck>(currentSocket, 'match:play', forgedPayload),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'COMMAND_REJECTED' },
+    });
+
+    const firstSkip = {
+      commandId: 'accepted1',
+      matchId: current.matchId,
+      expectedStateVersion: current.stateVersion,
+      expectedTurnId: current.turnId!,
+    };
+    const accepted = await emitAck<PrivateMatchAck>(currentSocket, 'match:skip', firstSkip);
+    if (!accepted.ok) throw new Error(accepted.error.message);
+    expect(await emitAck<PrivateMatchAck>(currentSocket, 'match:skip', firstSkip)).toMatchObject({
+      ok: false,
+      error: { message: 'duplicate' },
+    });
+    expect(
+      await emitAck<PrivateMatchAck>(currentSocket, 'match:skip', {
+        ...firstSkip,
+        commandId: 'stale1',
+      }),
+    ).toMatchObject({ ok: false, error: { message: 'stale_version' } });
+
+    const reconnectGuest = guests[2]!;
+    const originalHand = states[2]!.hand.map((card) => card.instanceId);
+    sockets[2]!.close();
+    const replacement = await connect(reconnectGuest.token, 'match:state');
+    const reconnected = (await replacement.initial) as PrivateMatchView;
+    expect(reconnected.hand.map((card) => card.instanceId)).toEqual(originalHand);
+    byGuest.set(reconnectGuest.guest.id, replacement.socket);
+    replacement.socket.on('match:state', (view: PrivateMatchView) => {
+      if (view.stateVersion >= latest.stateVersion) latest = view;
+    });
+
+    let driver = accepted.view;
+    for (let index = 0; index < 20 && driver.phase !== 'completed'; index++) {
+      if (driver.phase === 'round_result') {
+        const version = driver.stateVersion;
+        driver = await eventually(() =>
+          latest.stateVersion > version && latest.phase !== 'round_result' ? latest : undefined,
+        );
+        continue;
+      }
+      const actor = byGuest.get(driver.currentPlayerId!);
+      if (!actor) throw new Error('Missing active player socket');
+      const result = await emitAck<PrivateMatchAck>(actor, 'match:skip', {
+        commandId: `drive${index}`,
+        matchId: driver.matchId,
+        expectedStateVersion: driver.stateVersion,
+        expectedTurnId: driver.turnId!,
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      driver = result.view;
+    }
+    expect(driver.phase).toBe('completed');
+    expect(driver.winnerIds).toHaveLength(1);
+    expect(driver.placements).toHaveLength(3);
+    expect(driver.placements?.[0]).toBe(driver.winnerIds?.[0]);
+  });
+
+  it('uses private turn timeouts and advances abandoned seats through normal commands', async () => {
+    const normal = await makeLobby(2, {
+      targetScore: 3,
+      turnDurationMs: 20,
+      roundResultDelayMs: 1_000,
+      disconnectGraceMs: 200,
+    });
+    const timedOut = await waitForEvent<PrivateMatchView>(
+      normal.sockets[0]!,
+      'match:state',
+      (view) => view.phase === 'round_result',
+      500,
+    );
+    expect(timedOut.stateVersion).toBeGreaterThan(normal.states[0]!.stateVersion);
+  });
+
+  it('rejects reconnect after grace and lets an abandoned seat finish the match', async () => {
+    const game = await makeLobby(2, {
+      targetScore: 3,
+      turnDurationMs: 500,
+      roundResultDelayMs: 5,
+      disconnectGraceMs: 15,
+    });
+    const currentIndex = game.states.findIndex(
+      (state) => state.yourPlayerId === state.currentPlayerId,
+    );
+    const remainingIndex = currentIndex === 0 ? 1 : 0;
+    const remaining = game.sockets[remainingIndex]!;
+    const completed = waitForEvent<PrivateMatchView>(
+      remaining,
+      'match:state',
+      (view) => view.phase === 'completed',
+      1_000,
+    );
+    game.sockets[currentIndex]!.close();
+    const final = await completed;
+    const abandonedId = game.guests[currentIndex]!.guest.id;
+    expect(final.players.find((player) => player.id === abandonedId)?.abandoned).toBe(true);
+    expect(final.winnerIds).toContain(game.guests[remainingIndex]!.guest.id);
+
+    const expired = (await connect(game.guests[currentIndex]!.token)).socket;
+    expect(
+      await emitAck<PrivateMatchAck>(expired, 'match:skip', {
+        commandId: 'expired1',
+        matchId: final.matchId,
+        expectedStateVersion: final.stateVersion,
+        expectedTurnId: 'expired-turn',
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'RECONNECT_EXPIRED' } });
+  });
+});

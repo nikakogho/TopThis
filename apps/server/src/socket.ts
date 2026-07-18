@@ -1,5 +1,8 @@
 import {
   ClientHandshakeSchema,
+  LobbyAckSchema,
+  LobbyLeaveAckSchema,
+  PrivateMatchAckSchema,
   PublicServerHandshakeSchema,
   SocketErrorSchema,
   type PublicServerHandshake,
@@ -7,11 +10,22 @@ import {
 } from '@topthis/shared';
 import type { Socket } from 'socket.io';
 import { PracticeService } from './practice.js';
+import { PrivateService } from './private.js';
 
 export const SOCKET_EVENTS = {
   clientHello: 'client:hello',
   serverHello: 'server:hello',
   serverError: 'server:error',
+  lobbyCreate: 'lobby:create',
+  lobbyJoin: 'lobby:join',
+  lobbyReady: 'lobby:ready',
+  lobbySettings: 'lobby:settings',
+  lobbyStart: 'lobby:start',
+  lobbyState: 'lobby:state',
+  lobbyLeave: 'lobby:leave',
+  matchPlay: 'match:play',
+  matchSkip: 'match:skip',
+  matchState: 'match:state',
 } as const;
 
 export type ClientHelloResult =
@@ -40,7 +54,11 @@ export function validateClientHello(payload: unknown): ClientHelloResult {
   };
 }
 
-export function attachSocketBoundary(socket: Socket, practice?: PracticeService): void {
+export function attachSocketBoundary(
+  socket: Socket,
+  practice?: PracticeService,
+  privateService?: PrivateService,
+): void {
   socket.on(SOCKET_EVENTS.clientHello, (payload: unknown) => {
     const result = validateClientHello(payload);
     socket.emit(result.ok ? SOCKET_EVENTS.serverHello : SOCKET_EVENTS.serverError, result.response);
@@ -73,5 +91,76 @@ export function attachSocketBoundary(socket: Socket, practice?: PracticeService)
         }
       });
     socket.on('disconnect', () => practice.remove(socket.id));
+  }
+  if (privateService) {
+    try {
+      privateService.reconnect(socket);
+    } catch (error) {
+      socket.data.privateReconnectError =
+        error instanceof Error ? error.message : 'RECONNECT_EXPIRED';
+    }
+    const failure = (error: unknown) => {
+      const message =
+        (socket.data.privateReconnectError as string | undefined) ??
+        (error instanceof Error ? error.message : 'INVALID_PAYLOAD');
+      const code = [
+        'AUTH_REQUIRED',
+        'ALREADY_ACTIVE',
+        'LOBBY_UNAVAILABLE',
+        'NOT_HOST',
+        'NOT_READY',
+        'RECONNECT_EXPIRED',
+      ].includes(message)
+        ? message
+        : message === 'NO_SESSION'
+          ? 'NO_SESSION'
+          : 'INVALID_PAYLOAD';
+      return SocketErrorSchema.parse({ code, message });
+    };
+    const lobby = (event: keyof typeof SOCKET_EVENTS, fn: (raw: unknown) => unknown) =>
+      socket.on(SOCKET_EVENTS[event], (raw: unknown, ack?: (v: unknown) => void) => {
+        try {
+          if (socket.data.privateReconnectError)
+            throw Error(String(socket.data.privateReconnectError));
+          ack?.(LobbyAckSchema.parse({ ok: true, view: fn(raw) }));
+        } catch (error) {
+          ack?.(LobbyAckSchema.parse({ ok: false, error: failure(error) }));
+        }
+      });
+    lobby('lobbyCreate', (raw) => privateService.create(socket, raw));
+    lobby('lobbyJoin', (raw) => privateService.join(socket, raw));
+    lobby('lobbyReady', (raw) => privateService.ready(socket, raw));
+    lobby('lobbySettings', (raw) => privateService.settings(socket, raw));
+    socket.on(SOCKET_EVENTS.lobbyLeave, (_raw: unknown, ack?: (v: unknown) => void) => {
+      try {
+        if (socket.data.privateReconnectError)
+          throw Error(String(socket.data.privateReconnectError));
+        privateService.leave(socket);
+        ack?.(LobbyLeaveAckSchema.parse({ ok: true }));
+      } catch (error) {
+        ack?.(LobbyLeaveAckSchema.parse({ ok: false, error: failure(error) }));
+      }
+    });
+    socket.on(SOCKET_EVENTS.lobbyStart, (_raw: unknown, ack?: (v: unknown) => void) => {
+      try {
+        if (socket.data.privateReconnectError)
+          throw Error(String(socket.data.privateReconnectError));
+        const r = privateService.start(socket);
+        ack?.(LobbyAckSchema.parse({ ok: true, view: r.view, matchId: r.matchId }));
+      } catch (error) {
+        ack?.(LobbyAckSchema.parse({ ok: false, error: failure(error) }));
+      }
+    });
+    for (const type of ['play', 'skip'] as const)
+      socket.on(`match:${type}`, async (raw: unknown, ack?: (v: unknown) => void) => {
+        try {
+          if (socket.data.privateReconnectError)
+            throw Error(String(socket.data.privateReconnectError));
+          ack?.(await privateService.command(socket, raw, type));
+        } catch (error) {
+          ack?.(PrivateMatchAckSchema.parse({ ok: false, error: failure(error) }));
+        }
+      });
+    socket.on('disconnect', () => privateService.disconnect(socket));
   }
 }

@@ -1,13 +1,23 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PracticeAck, PracticeMatchView } from '@topthis/shared';
+import type {
+  Guest,
+  LobbyAck,
+  LobbyView,
+  PracticeAck,
+  PracticeMatchView,
+  PrivateMatchAck,
+  PrivateMatchView,
+} from '@topthis/shared';
 
 type Handler = (...args: unknown[]) => void;
 const socketMock = vi.hoisted(() => {
   const handlers = new Map<string, Set<Handler>>();
   const emitted: Array<{ event: string; args: unknown[] }> = [];
+  const eventAcks = new Map<string, unknown>();
   let nextAck: unknown;
   const api = {
+    auth: {} as Record<string, unknown>,
     connected: true,
     connect: vi.fn(),
     on: vi.fn((event: string, handler: Handler) => {
@@ -23,7 +33,8 @@ const socketMock = vi.hoisted(() => {
     emit: vi.fn((event: string, ...args: unknown[]) => {
       emitted.push({ event, args });
       const ack = args.at(-1);
-      if (typeof ack === 'function' && nextAck !== undefined) (ack as Handler)(nextAck);
+      const value = eventAcks.has(event) ? eventAcks.get(event) : nextAck;
+      if (typeof ack === 'function' && value !== undefined) (ack as Handler)(value);
       return api;
     }),
   };
@@ -34,9 +45,15 @@ const socketMock = vi.hoisted(() => {
     setAck(value: unknown) {
       nextAck = value;
     },
+    setAckFor(event: string, value: unknown) {
+      eventAcks.set(event, value);
+    },
     reset() {
       emitted.length = 0;
+      eventAcks.clear();
       nextAck = undefined;
+      api.auth = {};
+      api.connected = true;
     },
   };
 });
@@ -99,6 +116,42 @@ const playingView: PracticeMatchView = {
   deckCount: 178,
 };
 
+const ada: Guest = { id: 'guest1', displayName: 'Ada' };
+const grace: Guest = { id: 'guest2', displayName: 'Grace' };
+const lobbyView: LobbyView = {
+  code: 'AB23CD',
+  hostGuestId: ada.id,
+  settings: { playerCount: 2, targetScore: 50, turnDurationSeconds: 20 },
+  players: [
+    { guest: ada, ready: false, connected: true },
+    { guest: grace, ready: false, connected: true },
+  ],
+  started: false,
+};
+const privateMatchView: PrivateMatchView = {
+  ...playingView,
+  players: [
+    {
+      id: 'human1',
+      displayName: 'Ada',
+      isBot: false,
+      handCount: 3,
+      capturedCardCount: 0,
+      connected: true,
+      abandoned: false,
+    },
+    {
+      id: 'guest2',
+      displayName: 'Grace',
+      isBot: false,
+      handCount: 10,
+      capturedCardCount: 0,
+      connected: false,
+      abandoned: false,
+    },
+  ],
+};
+
 function openMatch(view: PracticeMatchView = playingView) {
   const ack: PracticeAck = { ok: true, view };
   socketMock.setAck(ack);
@@ -109,7 +162,9 @@ function openMatch(view: PracticeMatchView = playingView) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   socketMock.reset();
+  vi.clearAllMocks();
   vi.stubGlobal('crypto', { randomUUID: () => 'command1' });
 });
 
@@ -124,7 +179,7 @@ describe('TopThis practice UI', () => {
     expect(
       screen.getByRole('heading', { name: 'Everything beats something. Top this.' }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Host Game/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Host Game/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
     expect(screen.getByLabelText('Display name')).toHaveValue('Player');
     expect(screen.getByLabelText('Bot opponents')).toHaveValue('1');
@@ -187,5 +242,159 @@ describe('TopThis practice UI', () => {
     act(() => socketMock.handlers.get('practice:state')?.forEach((handler) => handler(completed)));
     expect(screen.getByRole('heading', { name: 'Defeat' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'New practice' })).toBeEnabled();
+  });
+});
+
+describe('TopThis private multiplayer UI', () => {
+  it('restores a valid saved guest and rejects an expired token', async () => {
+    localStorage.setItem(
+      'topthis.guestToken',
+      'valid-token-that-is-at-least-thirty-two-characters',
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ guest: ada }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = render(<App />);
+    await waitFor(() => expect(socketMock.api.connect).toHaveBeenCalled());
+    expect(socketMock.api.auth).toEqual({
+      guestToken: 'valid-token-that-is-at-least-thirty-two-characters',
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/guests/me', {
+      headers: { Authorization: 'Bearer valid-token-that-is-at-least-thirty-two-characters' },
+    });
+
+    first.unmount();
+    socketMock.reset();
+    vi.clearAllMocks();
+    localStorage.setItem('topthis.guestToken', 'expired-token-that-is-at-least-thirty-two-chars');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    render(<App />);
+    await waitFor(() => expect(localStorage.getItem('topthis.guestToken')).toBeNull());
+    expect(socketMock.api.connect).not.toHaveBeenCalled();
+  });
+
+  it('creates and stores a guest before hosting a lobby', async () => {
+    const token = 'new-token-that-is-at-least-thirty-two-characters';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ guest: ada, token }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const createAck: LobbyAck = { ok: true, view: lobbyView };
+    socketMock.setAckFor('lobby:create', createAck);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Host Game' }));
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Ada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('heading', { name: 'Host a lobby' })).toBeTruthy();
+    expect(localStorage.getItem('topthis.guestToken')).toBe(token);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/guests',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ displayName: 'Ada' }) }),
+    );
+
+    fireEvent.change(screen.getByLabelText('Target score'), { target: { value: '75' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create lobby' }));
+    expect(await screen.findByRole('heading', { name: 'Code: AB23CD' })).toBeTruthy();
+    const create = socketMock.emitted.find(({ event }) => event === 'lobby:create');
+    expect(create?.args[0]).toEqual({
+      settings: { playerCount: 2, targetScore: 75, turnDurationSeconds: 20 },
+    });
+  });
+
+  it('normalizes a join code and renders non-host lobby controls safely', async () => {
+    const token = 'join-token-that-is-at-least-thirty-two-characters';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ guest: grace, token }) }),
+    );
+    const joinedView: LobbyView = { ...lobbyView, players: lobbyView.players };
+    socketMock.setAckFor('lobby:join', { ok: true, view: joinedView } satisfies LobbyAck);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Join Game' }));
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Grace' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('heading', { name: 'Join a lobby' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Join code'), { target: { value: 'ab23cd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Join lobby' }));
+    expect(await screen.findByRole('heading', { name: 'Code: AB23CD' })).toBeTruthy();
+    expect(socketMock.emitted.find(({ event }) => event === 'lobby:join')?.args[0]).toEqual({
+      code: 'AB23CD',
+    });
+    expect(screen.queryByRole('button', { name: 'Update settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start Match' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Lobby settings' })).toHaveTextContent('50');
+  });
+
+  it('gates host start, sends ready/settings actions, and waits for leave acknowledgement', async () => {
+    localStorage.setItem('topthis.guestToken', 'host-token-that-is-at-least-thirty-two-characters');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ guest: ada }) }),
+    );
+    render(<App />);
+    await waitFor(() => expect(socketMock.api.connect).toHaveBeenCalled());
+    act(() => socketMock.handlers.get('lobby:state')?.forEach((handler) => handler(lobbyView)));
+
+    expect(screen.getByRole('button', { name: 'Start Match' })).toBeDisabled();
+    socketMock.setAckFor('lobby:settings', { ok: true, view: lobbyView } satisfies LobbyAck);
+    socketMock.setAckFor('lobby:ready', { ok: true, view: lobbyView } satisfies LobbyAck);
+    fireEvent.change(screen.getByLabelText('Turn timer'), { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ready up' }));
+    expect(socketMock.emitted.find(({ event }) => event === 'lobby:settings')?.args[0]).toEqual({
+      settings: { playerCount: 2, targetScore: 50, turnDurationSeconds: 30 },
+    });
+    expect(socketMock.emitted.find(({ event }) => event === 'lobby:ready')?.args[0]).toEqual({
+      ready: true,
+    });
+
+    const readyView: LobbyView = {
+      ...lobbyView,
+      players: lobbyView.players.map((player) => ({ ...player, ready: true })),
+    };
+    socketMock.setAckFor('lobby:start', { ok: true, view: readyView } satisfies LobbyAck);
+    act(() => socketMock.handlers.get('lobby:state')?.forEach((handler) => handler(readyView)));
+    fireEvent.click(screen.getByRole('button', { name: 'Start Match' }));
+    expect(socketMock.emitted.some(({ event }) => event === 'lobby:start')).toBe(true);
+
+    socketMock.setAckFor('lobby:leave', { ok: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Leave lobby' }));
+    expect(
+      screen.getByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeTruthy();
+  });
+
+  it('shows only public opponent state and emits private match commands', () => {
+    const playAck: PrivateMatchAck = { ok: true, view: privateMatchView };
+    socketMock.setAckFor('match:play', playAck);
+    socketMock.setAckFor('match:skip', playAck);
+    render(<App />);
+    act(() =>
+      socketMock.handlers.get('match:state')?.forEach((handler) => handler(privateMatchView)),
+    );
+
+    expect(screen.getByText('TOPTHIS / PRIVATE')).toBeTruthy();
+    const opponents = screen.getByRole('region', { name: 'Opponents' });
+    expect(opponents).toHaveTextContent('Grace');
+    expect(opponents).toHaveTextContent('10 cards in hand');
+    expect(opponents).toHaveTextContent('Disconnected');
+    expect(opponents.querySelector('img')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Epic Fire. Playable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play Card' }));
+    expect(socketMock.emitted.find(({ event }) => event === 'match:play')?.args[0]).toMatchObject({
+      matchId: 'match1',
+      cardInstanceId: 'fire.epic-1',
+      expectedTurnId: 'turn1',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(socketMock.emitted.some(({ event }) => event === 'match:skip')).toBe(true);
+    expect(socketMock.emitted.some(({ event }) => event.startsWith('practice:'))).toBe(false);
   });
 });

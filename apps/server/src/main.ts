@@ -13,11 +13,19 @@ const { app, io } = await createServer({
   serveClient: process.env.NODE_ENV === 'production',
   practice: {
     seed: optionalNumber('TOPTHIS_E2E_SEED'),
-    targetScore: optionalNumber('TOPTHIS_E2E_TARGET_SCORE'),
-    turnDurationMs: optionalNumber('TOPTHIS_E2E_TURN_DURATION_MS'),
     botDelayMs: optionalNumber('TOPTHIS_E2E_BOT_DELAY_MS'),
     botSkipChance: optionalNumber('TOPTHIS_E2E_BOT_SKIP_CHANCE'),
     roundResultDelayMs: optionalNumber('TOPTHIS_E2E_ROUND_DELAY_MS'),
+    targetScore: optionalNumber('TOPTHIS_E2E_TARGET_SCORE'),
+    turnDurationMs: optionalNumber('TOPTHIS_E2E_TURN_DURATION_MS'),
+  },
+  databasePath: process.env.TOPTHIS_DATABASE_PATH,
+  private: {
+    seed: optionalNumber('TOPTHIS_E2E_SEED'),
+    disconnectGraceMs: optionalNumber('TOPTHIS_E2E_DISCONNECT_GRACE_MS'),
+    roundResultDelayMs: optionalNumber('TOPTHIS_E2E_ROUND_DELAY_MS'),
+    targetScore: optionalNumber('TOPTHIS_E2E_TARGET_SCORE'),
+    turnDurationMs: optionalNumber('TOPTHIS_E2E_TURN_DURATION_MS'),
   },
 });
 
