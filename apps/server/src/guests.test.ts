@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { calculateElo, SqliteGuestRepository } from './guests.js';
+import { calculateElo, hashGuestToken, SqliteGuestRepository } from './guests.js';
 
 const paths: string[] = [];
 afterEach(() => {
@@ -94,6 +94,112 @@ describe('ratings and leaderboard', () => {
 });
 
 describe('SqliteGuestRepository', () => {
+  it('adopts a Phase 3 guest database once and preserves exactly-once completion after reopen', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'topthis-phase3-migration-'));
+    paths.push(dir);
+    const file = join(dir, 'phase3.sqlite');
+    const token = 'a'.repeat(43);
+    const legacy = new Database(file);
+    legacy.exec(`CREATE TABLE guests (
+      id TEXT PRIMARY KEY NOT NULL, display_name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    )`);
+    legacy
+      .prepare('INSERT INTO guests (id, display_name, token_hash, created_at) VALUES (?, ?, ?, ?)')
+      .run('legacy-a', 'Ari', hashGuestToken(token), 1);
+    legacy.close();
+
+    const repo = new SqliteGuestRepository(file);
+    expect(repo.findByToken(token)).toEqual({ id: 'legacy-a', displayName: 'Ari' });
+    const first = repo.completeMatch({
+      matchId: 'm-legacy',
+      mode: 'private',
+      seed: 2,
+      commandLog: [],
+      players: [
+        { guestId: 'legacy-a', score: 2 },
+        { guestId: repo.create('Bea').guest.id, score: 1 },
+      ],
+    });
+    repo.close();
+
+    const reopened = new SqliteGuestRepository(file);
+    const again = reopened.completeMatch({
+      matchId: 'm-legacy',
+      mode: 'private',
+      seed: 999,
+      commandLog: ['ignored on retry'],
+      players: [
+        { guestId: 'legacy-a', score: 0 },
+        { guestId: 'also-ignored', score: 99 },
+      ],
+    });
+    expect(again).toEqual(first);
+    reopened.close();
+
+    const inspected = new Database(file, { readonly: true });
+    expect(
+      inspected.prepare('SELECT version FROM schema_migrations ORDER BY version').pluck().all(),
+    ).toEqual([1, 2, 3, 4]);
+    expect(
+      inspected.prepare('SELECT games_played FROM guests WHERE id = ?').get('legacy-a'),
+    ).toEqual({
+      games_played: 1,
+    });
+    inspected.close();
+  });
+
+  it('marks an existing Phase 4 database without changing its history', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'topthis-phase4-migration-'));
+    paths.push(dir);
+    const file = join(dir, 'phase4.sqlite');
+    const legacy = new Database(file);
+    legacy.exec(`CREATE TABLE guests (
+      id TEXT PRIMARY KEY NOT NULL, display_name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL, rating INTEGER NOT NULL DEFAULT 1000, wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0, ties INTEGER NOT NULL DEFAULT 0, games_played INTEGER NOT NULL DEFAULT 0
+    ); CREATE TABLE completed_matches (
+      match_id TEXT PRIMARY KEY NOT NULL, mode TEXT NOT NULL, completed_at INTEGER NOT NULL, seed INTEGER NOT NULL,
+      command_log TEXT NOT NULL, result_json TEXT NOT NULL
+    ); CREATE TABLE completed_match_players (
+      match_id TEXT NOT NULL, guest_id TEXT NOT NULL, score INTEGER NOT NULL, placement INTEGER NOT NULL,
+      outcome TEXT NOT NULL CHECK(outcome IN ('win', 'loss', 'tie')), rating_before INTEGER NOT NULL,
+      rating_after INTEGER NOT NULL, PRIMARY KEY (match_id, guest_id)
+    )`);
+    legacy
+      .prepare('INSERT INTO guests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run('phase4-a', 'Ada', 'hash', 1, 1017, 1, 0, 0, 1);
+    legacy
+      .prepare('INSERT INTO completed_matches VALUES (?, ?, ?, ?, ?, ?)')
+      .run('old-match', 'private', 2, 3, '[]', '{"matchId":"old-match","ratings":{}}');
+    legacy
+      .prepare('INSERT INTO completed_match_players VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run('old-match', 'phase4-a', 3, 1, 'win', 1000, 1017);
+    legacy.close();
+
+    const repo = new SqliteGuestRepository(file);
+    expect(repo.leaderboard(1, 10).entries[0]).toMatchObject({
+      guestId: 'phase4-a',
+      rating: 1017,
+      wins: 1,
+    });
+    repo.close();
+    const reopened = new SqliteGuestRepository(file);
+    reopened.close();
+
+    const inspected = new Database(file, { readonly: true });
+    expect(inspected.prepare('SELECT COUNT(*) AS count FROM completed_matches').get()).toEqual({
+      count: 1,
+    });
+    expect(inspected.prepare('SELECT rating_after FROM completed_match_players').get()).toEqual({
+      rating_after: 1017,
+    });
+    expect(inspected.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toEqual({
+      count: 4,
+    });
+    inspected.close();
+  });
+
   it('persists opaque guests across reopen and stores only a token hash', () => {
     const dir = mkdtempSync(join(tmpdir(), 'topthis-guests-'));
     paths.push(dir);

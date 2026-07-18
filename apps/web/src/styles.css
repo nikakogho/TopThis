@@ -138,6 +138,41 @@ main {
   margin: 0;
   color: #aaa2b4;
 }
+.rules-screen {
+  max-width: 52rem;
+  align-content: start;
+  padding-top: clamp(2rem, 8vh, 5rem);
+}
+.rules-screen h1 {
+  max-width: none;
+}
+.rules-screen h1:focus-visible {
+  border-radius: 0.2rem;
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+.rules-screen section {
+  border-top: 1px solid #3d374a;
+  padding-top: 1rem;
+}
+.rules-screen h2 {
+  margin: 0 0 0.45rem;
+  color: #efbb58;
+  font-size: 1.2rem;
+}
+.rules-screen p,
+.rules-screen li {
+  color: #d0c8d8;
+  line-height: 1.55;
+}
+.rules-screen p {
+  margin: 0;
+}
+.rules-screen ol,
+.rules-screen ul {
+  margin: 0;
+  padding-left: 1.35rem;
+}
 .queue-screen {
   max-width: 42rem;
 }

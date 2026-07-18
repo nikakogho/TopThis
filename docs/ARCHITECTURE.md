@@ -41,3 +41,23 @@ completion, player result rows and rating/stat updates run in one transaction
 keyed by match ID; a duplicate completion returns the stored result without
 applying changes again. Leaderboard pagination is bounded (page >= 1,
 pageSize 1-100) and uses the documented stable ordering.
+
+Schema initialization is an ordered migration sequence recorded in
+`schema_migrations`. Each unapplied version runs in an immediate SQLite
+transaction and records its marker only after the schema change succeeds.
+Databases created in Phase 3 or Phase 4 are adopted by shape checks, preserving
+guest and completed-match data; a failed startup can safely retry the remaining
+versions.
+
+## Production process
+
+After the workspace build, `@topthis/server` is the only production process. In
+production mode Fastify serves the Vite `index.html` and hashed assets while
+registered `/health`, `/api/*` and Socket.IO boundaries remain authoritative.
+The client build is considered present only when its index exists; a missing
+build is logged and leaves the API process available for diagnosis.
+
+Fastify's JSON logger records startup, request completion, missing-client-build
+and graceful-shutdown events. Guest tokens, private hands, legal moves and raw
+command state are not application log fields. The health endpoint remains a
+small validated liveness response and is registered before static serving.

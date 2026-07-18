@@ -1,4 +1,5 @@
 import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
@@ -39,9 +40,9 @@ export interface TopThisServer {
 
 const defaultClientDistPath = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
-async function pathExists(path: string): Promise<boolean> {
+async function clientBuildExists(root: string): Promise<boolean> {
   try {
-    await access(path);
+    await access(join(root, 'index.html'));
     return true;
   } catch {
     return false;
@@ -105,7 +106,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
 
   if (options.serveClient) {
     const root = options.clientDistPath ?? defaultClientDistPath;
-    if (await pathExists(root)) {
+    if (await clientBuildExists(root)) {
       await app.register(fastifyStatic, { root, wildcard: false });
     } else {
       app.log.info({ clientDistPath: root }, 'Client build not found; static serving disabled');

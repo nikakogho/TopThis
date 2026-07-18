@@ -82,22 +82,26 @@ test('three guests host, join, start, time out, reconnect, and complete privatel
       throw new Error('No current private player');
     })();
     const playable = actor.getByRole('button', { name: /Playable/ }).first();
+    const actorHandCount = await actor.locator('[data-hand-card]').count();
     if (await playable.count()) {
       await playable.click();
       await actor.getByRole('button', { name: 'Play Card' }).click();
-      await expect(actor.getByRole('button', { name: 'Play Card' })).toBeDisabled();
-    } else await actor.getByRole('button', { name: 'Skip' }).click();
+      await expect(actor.locator('[data-hand-card]')).toHaveCount(actorHandCount - 1);
+    } else {
+      await actor.getByRole('button', { name: 'Skip' }).click();
+      await expect(actor.getByRole('button', { name: 'Skip' })).toBeDisabled();
+    }
 
     const savedHand = await two
       .locator('[data-hand-card]')
-      .evaluateAll((cards) => cards.map((c) => c.getAttribute('aria-label')));
+      .evaluateAll((cards) => cards.map((c) => c.getAttribute('data-card-instance-id')));
     await two.reload();
     await expect(two.getByText('TOP THIS')).toBeVisible();
     await expect
       .poll(async () =>
         two
           .locator('[data-hand-card]')
-          .evaluateAll((cards) => cards.map((c) => c.getAttribute('aria-label'))),
+          .evaluateAll((cards) => cards.map((c) => c.getAttribute('data-card-instance-id'))),
       )
       .toEqual(savedHand);
 

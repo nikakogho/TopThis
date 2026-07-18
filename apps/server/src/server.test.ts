@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
@@ -32,6 +34,7 @@ const ack = (socket: ClientSocket, event: string, payload: unknown) =>
 describe('TopThis server', () => {
   const instances: Awaited<ReturnType<typeof createServer>>[] = [];
   const clients: ClientSocket[] = [];
+  const paths: string[] = [];
   afterEach(async () => {
     clients.splice(0).forEach((client) => client.close());
     await Promise.all(
@@ -40,6 +43,7 @@ describe('TopThis server', () => {
         await app.close();
       }),
     );
+    paths.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true }));
   });
   async function connect(
     practice: ConstructorParameters<typeof createServer>[0]['practice'] = {},
@@ -71,6 +75,45 @@ describe('TopThis server', () => {
     });
     instances.push(server);
     expect((await server.app.inject({ method: 'GET', url: '/health' })).statusCode).toBe(200);
+  });
+
+  it('serves an injected production client without masking API, health, or Socket.IO', async () => {
+    const dist = mkdtempSync(join(tmpdir(), 'topthis-vite-dist-'));
+    paths.push(dist);
+    mkdirSync(join(dist, 'assets'));
+    writeFileSync(join(dist, 'index.html'), '<main>TopThis production client</main>');
+    writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'console.log("asset");');
+    const server = await createServer({
+      serveClient: true,
+      clientDistPath: dist,
+      databasePath: ':memory:',
+    });
+    instances.push(server);
+
+    const root = await server.app.inject({ method: 'GET', url: '/' });
+    expect(root.statusCode).toBe(200);
+    expect(root.body).toContain('TopThis production client');
+    const index = await server.app.inject({ method: 'GET', url: '/index.html' });
+    expect(index.statusCode).toBe(200);
+    const asset = await server.app.inject({ method: 'GET', url: '/assets/app-abc123.js' });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.body).toContain('console.log');
+    expect((await server.app.inject({ method: 'GET', url: '/health' })).json()).toMatchObject({
+      status: 'ok',
+    });
+    expect(
+      (await server.app.inject({ method: 'GET', url: '/api/leaderboard' })).json(),
+    ).toMatchObject({
+      total: 0,
+    });
+
+    await server.app.listen({ port: 0, host: '127.0.0.1' });
+    const address = server.app.server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const client = clientIo(`http://127.0.0.1:${port}`, { transports: ['websocket'] });
+    clients.push(client);
+    await new Promise<void>((resolve) => client.once('connect', resolve));
+    expect(client.connected).toBe(true);
   });
 
   it.each([1, 2, 3])('creates a private %i-bot practice view', async (botCount) => {

@@ -49,6 +49,79 @@ export function calculateElo(
 export const hashGuestToken = (token: string): string =>
   createHash('sha256').update(token).digest('hex');
 
+type TableColumn = { name: string };
+
+const hasColumn = (db: Database.Database, table: string, column: string): boolean =>
+  (db.prepare(`PRAGMA table_info(${table})`).all() as TableColumn[]).some(
+    (candidate) => candidate.name === column,
+  );
+
+/**
+ * Keep migrations tolerant of databases created before schema_migrations
+ * existed. The checks are intentionally part of each migration: an existing
+ * Phase 3 or Phase 4 database is adopted by the marker without data rewrites.
+ */
+const migrations: Array<(db: Database.Database) => void> = [
+  (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS guests (
+      id TEXT PRIMARY KEY NOT NULL,
+      display_name TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    )`);
+  },
+  (db) => {
+    for (const column of [
+      'rating INTEGER NOT NULL DEFAULT 1000',
+      'wins INTEGER NOT NULL DEFAULT 0',
+      'losses INTEGER NOT NULL DEFAULT 0',
+      'ties INTEGER NOT NULL DEFAULT 0',
+      'games_played INTEGER NOT NULL DEFAULT 0',
+    ]) {
+      const name = column.split(' ')[0]!;
+      if (!hasColumn(db, 'guests', name)) db.exec(`ALTER TABLE guests ADD COLUMN ${column}`);
+    }
+  },
+  (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS completed_matches (
+      match_id TEXT PRIMARY KEY NOT NULL, mode TEXT NOT NULL, completed_at INTEGER NOT NULL, seed INTEGER NOT NULL,
+      command_log TEXT NOT NULL, result_json TEXT NOT NULL
+    ); CREATE TABLE IF NOT EXISTS completed_match_players (
+      match_id TEXT NOT NULL, guest_id TEXT NOT NULL, score INTEGER NOT NULL, placement INTEGER NOT NULL DEFAULT 1, outcome TEXT NOT NULL DEFAULT 'tie' CHECK(outcome IN ('win', 'loss', 'tie')), rating_before INTEGER NOT NULL,
+      rating_after INTEGER NOT NULL, PRIMARY KEY (match_id, guest_id), FOREIGN KEY(match_id) REFERENCES completed_matches(match_id), FOREIGN KEY(guest_id) REFERENCES guests(id)
+    )`);
+  },
+  (db) => {
+    if (!hasColumn(db, 'completed_match_players', 'placement'))
+      db.exec(
+        'ALTER TABLE completed_match_players ADD COLUMN placement INTEGER NOT NULL DEFAULT 1',
+      );
+    if (!hasColumn(db, 'completed_match_players', 'outcome'))
+      db.exec("ALTER TABLE completed_match_players ADD COLUMN outcome TEXT NOT NULL DEFAULT 'tie'");
+  },
+];
+
+function applyMigrations(db: Database.Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY NOT NULL,
+    applied_at INTEGER NOT NULL
+  )`);
+  for (const [index, migrate] of migrations.entries()) {
+    const version = index + 1;
+    const applied = db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(version);
+    if (applied) continue;
+    db.transaction(() => {
+      // Recheck after SQLite has acquired the write lock for this migration.
+      if (db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(version)) return;
+      migrate(db);
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
+        version,
+        Date.now(),
+      );
+    }).immediate();
+  }
+}
+
 export interface GuestRepository {
   create(displayName: string): { guest: Guest; token: string };
   findByToken(token: string): Guest | undefined;
@@ -65,40 +138,7 @@ export class SqliteGuestRepository implements GuestRepository {
     this.db = new Database(path);
     if (path !== ':memory:') this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
-    this.db.exec(`CREATE TABLE IF NOT EXISTS guests (
-      id TEXT PRIMARY KEY NOT NULL,
-      display_name TEXT NOT NULL,
-      token_hash TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL
-    )`);
-    const columns = this.db.prepare('PRAGMA table_info(guests)').all() as Array<{ name: string }>;
-    for (const column of [
-      'rating INTEGER NOT NULL DEFAULT 1000',
-      'wins INTEGER NOT NULL DEFAULT 0',
-      'losses INTEGER NOT NULL DEFAULT 0',
-      'ties INTEGER NOT NULL DEFAULT 0',
-      'games_played INTEGER NOT NULL DEFAULT 0',
-    ])
-      if (!columns.some((x) => x.name === column.split(' ')[0]))
-        this.db.exec(`ALTER TABLE guests ADD COLUMN ${column}`);
-    this.db.exec(`CREATE TABLE IF NOT EXISTS completed_matches (
-      match_id TEXT PRIMARY KEY NOT NULL, mode TEXT NOT NULL, completed_at INTEGER NOT NULL, seed INTEGER NOT NULL,
-      command_log TEXT NOT NULL, result_json TEXT NOT NULL
-    ); CREATE TABLE IF NOT EXISTS completed_match_players (
-      match_id TEXT NOT NULL, guest_id TEXT NOT NULL, score INTEGER NOT NULL, placement INTEGER NOT NULL, outcome TEXT NOT NULL CHECK(outcome IN ('win', 'loss', 'tie')), rating_before INTEGER NOT NULL,
-      rating_after INTEGER NOT NULL, PRIMARY KEY (match_id, guest_id), FOREIGN KEY(match_id) REFERENCES completed_matches(match_id), FOREIGN KEY(guest_id) REFERENCES guests(id)
-    )`);
-    const playerColumns = this.db
-      .prepare('PRAGMA table_info(completed_match_players)')
-      .all() as Array<{ name: string }>;
-    if (!playerColumns.some((x) => x.name === 'placement'))
-      this.db.exec(
-        'ALTER TABLE completed_match_players ADD COLUMN placement INTEGER NOT NULL DEFAULT 1',
-      );
-    if (!playerColumns.some((x) => x.name === 'outcome'))
-      this.db.exec(
-        "ALTER TABLE completed_match_players ADD COLUMN outcome TEXT NOT NULL DEFAULT 'tie'",
-      );
+    applyMigrations(this.db);
   }
   create(rawDisplayName: string): { guest: Guest; token: string } {
     const displayName = DisplayNameSchema.parse(rawDisplayName);

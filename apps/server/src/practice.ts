@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import cards from '../../../content/cards.json';
+import cards from '../../../content/cards.json' with { type: 'json' };
 import {
   applyCommand,
   createMatch,

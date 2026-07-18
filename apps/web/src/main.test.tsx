@@ -563,4 +563,13 @@ describe('TopThis matchmaking and leaderboard UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load leaderboard.');
   });
+
+  it('opens semantic rules, moves focus, and restores the landing trigger', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'How to Play' }));
+    expect(screen.getByRole('heading', { name: 'Top this.' })).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Objective' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to menu' }));
+    expect(screen.getByRole('button', { name: 'How to Play' })).toHaveFocus();
+  });
 });

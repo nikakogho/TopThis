@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Phase 5 — product and operational polish (planning)
-- Last completed phase: Phase 4 — matchmaking, ratings and leaderboard
+- Active phase: Complete — local MVP release gate passed
+- Last completed phase: Phase 5 — product and operational readiness
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -129,6 +129,16 @@ Prettier and contract-name cross-check`
 retained, but two attempts left post-completion timing/reload races; Sol
 performed the policy-authorized test takeover | focused flow passed twice and
 the full regression suite passed twice consecutively`
+- `terra_worker | Phase 5 SQLite migrations and production serving | ordered
+migrations/static-route tests passed on the first pass, but the real compiled
+Node process exposed missing JSON import attributes; the second pass added
+native-ESM coverage and fixed production startup | 23 server tests, build,
+typecheck/lint and compiled production HTTP smoke`
+- `luna_worker | Phase 5 Rules, accessibility and contributor docs | Rules and
+README foundations retained; the first pass omitted focused tests/docs and the
+second still left incorrect environment names, focus restoration and formatting
+work, so Sol performed the policy-authorized bounded integration takeover | 17
+web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 
 ## Phase 0 verification
 
@@ -598,7 +608,129 @@ the full regression suite passed twice consecutively`
   responsive widths and for the populated semantic leaderboard at desktop.
 - Full workspace tests, build, strict type checking, lint and formatting pass.
 
+## Phase 5 delegation ledger
+
+### SOL DECISIONS
+
+- Keep one deployable Node process. `pnpm build` produces the Vite client and
+  compiled server; `pnpm --filter @topthis/server start` serves that client,
+  HTTP APIs and Socket.IO from the same origin in production.
+- Keep the screen-based React shell for the Rules view; adding a routing library
+  would add no MVP value. How to Play becomes a real keyboard-accessible landing
+  action and the rules content mirrors the authoritative documented semantics.
+- Formalize SQLite initialization as ordered, idempotent schema migrations with
+  a durable version marker. Existing Phase 3/4 databases must upgrade without
+  losing guest, rating or completed-match data; initialization failure must stop
+  startup rather than produce a partially usable service.
+- The existing Fastify JSON logger is the structured production log boundary.
+  Startup, requests, missing-client-build fallback and graceful shutdown remain
+  logged without tokens, hands or secrets. `/health` remains dependency-light
+  and must respond before static routing can mask it.
+- CI retains frozen install, formatting, lint, strict type checking, unit/
+  integration tests, production build and Chromium E2E on Node 24/pnpm 11.
+- Final verification uses a clean local clone with frozen install, build, tests
+  and production-server HTTP smoke; generated dependencies, databases and test
+  artifacts remain ignored and are never copied back.
+
+### TERRA TASKS
+
+- Own `apps/server/src/guests.ts`, `apps/server/src/guests.test.ts`,
+  `apps/server/src/server.ts`, `apps/server/src/server.test.ts` and narrowly
+  necessary server package configuration for Phase 5 operations.
+- Replace ad-hoc schema initialization with ordered, transactionally applied,
+  idempotent SQLite migrations/versioning that upgrades a Phase 3-style guests
+  database and a Phase 4 database without data loss. Preserve all current
+  repository behavior, exactly-once completion and Node 24 compatibility.
+- Harden and test production static serving from an injected Vite-like build:
+  root/index and hashed asset requests work while `/health`, `/api/*` and
+  Socket.IO remain authoritative and missing build output is logged/nonfatal.
+  Do not add containers, external databases, distributed infrastructure or UI.
+- Do not edit web, shared/engine/content, root docs/README/CI, this ledger or
+  spawn subagents. Do not revert concurrent changes.
+- Definition of done: old databases migrate to the current schema exactly once;
+  reopen is harmless and preserves data; a production-configured server serves
+  the client and APIs with no secret logging; all prior server tests pass.
+- Verification: `pnpm.cmd --filter @topthis/server test`, filtered build and
+  typecheck, and root ESLint scoped to owned server files.
+
+### LUNA TASKS
+
+- Own `apps/web/src/**`, focused `apps/web/e2e/**`, `README.md`, `.env.example`,
+  `docs/CARD_CONTENT.md`, `docs/TEST_PLAN.md` and CSS/documentation polish for
+  Phase 5. Do not edit server/shared/engine/content/root package/lock/CI or this
+  current-state file; do not spawn subagents or revert concurrent changes.
+- Enable How to Play as a real Rules screen covering objective, setup, legal
+  plays, skipping/rounds, Tornado/Meteor, scoring/end/ties, turn timeout,
+  reconnection and private-hand privacy. Use semantic headings/lists, a clear
+  return action, visible focus, responsive containment and reduced-motion-safe
+  presentation. Preserve complete keyboard card operation and every game mode.
+- Expand focused React/Playwright coverage for the rules action and desktop/
+  mobile containment. Audit accessible names, landmark/headline structure,
+  loading/status/error announcements and color-independent legality without
+  changing game semantics.
+- Replace the stale README with complete Node/pnpm prerequisites, Windows and
+  POSIX install/dev/build/test commands, local gameplay usage, production start,
+  environment variables, SQLite location, single-instance limit, architecture,
+  artwork replacement/fallback and troubleshooting. Add a safe `.env.example`
+  containing no secrets and keep artwork dimensions/naming/workflow exact.
+- Definition of done: every landing action is functional; Rules is usable by
+  keyboard and at 390px; web regressions pass; a new contributor can install,
+  develop, test and run production solely from committed instructions.
+- Verification: `pnpm.cmd --filter @topthis/web test`, build/typecheck, root
+  ESLint scoped to web/E2E, Prettier for owned docs, and the focused Playwright
+  rules/mobile flow.
+
+### TOO SMALL TO DELEGATE
+
+- Review migration rollback/version semantics, static/API route precedence,
+  logging privacy, Rules accuracy and final accessibility behavior.
+- Review and, only if necessary, minimally harden CI; run a clean-clone frozen
+  install/build/test and production same-origin smoke on Windows.
+- Run the full gate and repeated Playwright regression, inspect final desktop
+  and mobile landing/Rules/game/leaderboard states in the built-in Browser,
+  update this record, commit and push the passing release.
+
+## Phase 5 verification
+
+- Four ordered immediate SQLite migrations are recorded only after successful
+  application. Tests create representative Phase 3 and Phase 4 databases,
+  preserve guest/rating/history data, reopen harmlessly and prove duplicate
+  completion still applies no second rating/stat update.
+- A production-configured Fastify test serves injected index/hashed assets while
+  health, API and Socket.IO remain authoritative. Native Node 24 ESM imports of
+  both server-owned match services are part of the server test command, guarding
+  the JSON import attributes that the development/Vitest loaders had masked.
+- How to Play is a complete semantic Rules screen with accurate explicit-counter,
+  pass/round, Tornado/Meteor, score/end/tie, timeout, reconnect and privacy
+  guidance. Keyboard entry focuses the Rules heading and returning restores the
+  trigger; mobile containment, visible focus and reduced-motion behavior pass.
+- The production document has language, viewport, theme, description and
+  branded-favicon metadata. The README and safe environment template cover
+  Windows/POSIX setup, every root gate, local modes, production start, exact
+  environment names, SQLite/migrations, single-instance operation, architecture,
+  artwork replacement/fallback and troubleshooting.
+- The final workspace has 69 passing unit/integration tests: 25 engine, 4 shared,
+  23 server and 17 web. Production build, strict type checking, ESLint and
+  Prettier pass. All five Playwright flows pass in two consecutive full runs,
+  including practice, private multiplayer/reconnect, public matchmaking/rating
+  persistence, mobile landing and mobile Rules/focus.
+- Built-in Browser inspection of the compiled production process passed for the
+  landing and Rules screens at desktop and 390x844 widths. Earlier phase checks
+  cover live table/card/result, private lobby, queue and leaderboard states.
+- A detached candidate was checked out through a real no-checkout local clone on
+  Windows. Frozen `pnpm install`, tests/native ESM smoke, typecheck, lint, format,
+  root `pnpm dev`, and compiled production start all passed. The production root,
+  health, leaderboard and favicon returned 200. This check found and fixed the
+  repository's missing LF checkout policy before release.
+- CI already performs frozen install, formatting, lint, typecheck, tests/build,
+  Chromium installation and all Playwright flows on Node 24 with pnpm 11.
+
 ## Remaining non-blocking limitations
 
-- Gameplay, private/public multiplayer, persistence, ratings and leaderboard are
-  complete. Final product, deployment and operational polish remains for Phase 5.
+- The local MVP is intentionally single-instance. A process restart preserves
+  guests, completed matches, ratings and leaderboard data but discards active
+  queues, lobbies and matches; horizontal scaling requires shared live state and
+  a Socket.IO adapter.
+- Identity is anonymous and device-local rather than account based. Supplying
+  original 1024x1024 card artwork remains optional; the complete accessible
+  deterministic fallback is the shipped presentation until it is replaced.

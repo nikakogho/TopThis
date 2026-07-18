@@ -80,12 +80,13 @@ test('two guests match, complete through the rendered table, and retain leaderbo
     await expect(initialActor.getByRole('button', { name: /Playable/ }).first()).toBeEnabled();
     const illegal = initialActor.getByRole('button', { name: /Cannot beat current card/ }).first();
     if (await illegal.count()) await expect(illegal).toBeDisabled();
+    const initialHandCount = await initialActor.locator('[data-hand-card]').count();
     await initialActor
       .getByRole('button', { name: /Playable/ })
       .first()
       .click();
     await initialActor.getByRole('button', { name: 'Play Card' }).click();
-    await expect(initialActor.getByRole('button', { name: 'Play Card' })).toBeDisabled();
+    await expect(initialActor.locator('[data-hand-card]')).toHaveCount(initialHandCount - 1);
 
     for (let actions = 0; actions < 20;) {
       if (

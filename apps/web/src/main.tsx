@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState, type KeyboardEvent } from 'react';
+import { StrictMode, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
 import {
@@ -22,7 +22,16 @@ import './styles.css';
 
 type Card = PracticeMatchView['hand'][number];
 type Screen =
-  'landing' | 'setup' | 'identity' | 'host' | 'join' | 'lobby' | 'match' | 'queue' | 'leaderboard';
+  | 'landing'
+  | 'rules'
+  | 'setup'
+  | 'identity'
+  | 'host'
+  | 'join'
+  | 'lobby'
+  | 'match'
+  | 'queue'
+  | 'leaderboard';
 
 const socket = io(import.meta.env.VITE_TOPTHIS_SERVER_URL || undefined, {
   autoConnect: false,
@@ -95,6 +104,16 @@ function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>();
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState('');
+  const rulesTriggerRef = useRef<HTMLButtonElement>(null);
+  const rulesTitleRef = useRef<HTMLHeadingElement>(null);
+  const previousScreenRef = useRef<Screen | undefined>(undefined);
+
+  useEffect(() => {
+    if (screen === 'rules') rulesTitleRef.current?.focus();
+    else if (screen === 'landing' && previousScreenRef.current === 'rules')
+      rulesTriggerRef.current?.focus();
+    previousScreenRef.current = screen;
+  }, [screen]);
   const networked = mode !== 'practice';
   const view = networked ? privateView : practiceView;
 
@@ -378,10 +397,89 @@ function App() {
             Find Match
           </button>
           <button onClick={() => void loadLeaderboard()}>Leaderboard</button>
-          <button className="muted" disabled>
-            How to Play<small>Coming soon</small>
+          <button ref={rulesTriggerRef} className="muted" onClick={() => setScreen('rules')}>
+            How to Play
           </button>
         </div>
+      </main>
+    );
+  }
+
+  if (screen === 'rules') {
+    return (
+      <main className="setup rules-screen" aria-labelledby="rules-title">
+        <p className="eyebrow">HOW TO PLAY</p>
+        <h1 ref={rulesTitleRef} id="rules-title" tabIndex={-1}>
+          Top this.
+        </h1>
+        <p className="setup-note">
+          The last successful play takes the pile. Build your score before the target is reached.
+        </p>
+        <section>
+          <h2>Objective</h2>
+          <p>
+            Outscore your opponents by capturing piles. Reaching the target ends the match; the
+            highest captured-card score wins, and equal highest scores tie.
+          </p>
+        </section>
+        <section>
+          <h2>Setup</h2>
+          <ol>
+            <li>Each player receives a private hand of 10 cards.</li>
+            <li>A challenge card starts the pile and turns move clockwise.</li>
+            <li>
+              Only the server decides the selected 200-card deck, legal plays, scores and timer.
+            </li>
+          </ol>
+        </section>
+        <section>
+          <h2>Legal plays</h2>
+          <p>
+            Play a card that beats the current challenge according to its explicit counter
+            relationship. Legal cards are enabled and labelled; illegal cards remain visible but
+            cannot be confirmed.
+          </p>
+        </section>
+        <section>
+          <h2>Skipping and rounds</h2>
+          <p>
+            If you cannot or do not want to play, choose Skip. A round ends only after every other
+            active player has passed since the latest successful play; the last successful player
+            captures the pile and hands refill clockwise.
+          </p>
+        </section>
+        <section>
+          <h2>Special cards</h2>
+          <ul>
+            <li>
+              <strong>Tornado</strong> is Legendary and beats every ordinary card and Tornado, but
+              never Meteor.
+            </li>
+            <li>
+              <strong>Meteor</strong> is one master-pool copy, may be absent or undrawn, beats every
+              non-Meteor and cannot be beaten.
+            </li>
+          </ul>
+        </section>
+        <section>
+          <h2>Scoring, ties and end</h2>
+          <p>
+            Captured cards score for their owner. The server completes the match when the target is
+            reached or the selected 200-card deck can no longer continue. Highest score wins; equal
+            highest scores are recorded as a tie.
+          </p>
+        </section>
+        <section>
+          <h2>Time and connection</h2>
+          <p>
+            Each turn has a server deadline. An expired turn becomes an automatic skip. If you
+            reconnect during the grace period, the server restores your exact private hand.
+            Opponents never receive your cards or legal moves.
+          </p>
+        </section>
+        <button className="secondary" onClick={() => setScreen('landing')}>
+          Return to menu
+        </button>
       </main>
     );
   }
@@ -810,6 +908,7 @@ function App() {
             <button
               key={card.instanceId}
               data-hand-card
+              data-card-instance-id={card.instanceId}
               className={`card hand-card ${card.rarity} ${isSelected ? 'selected' : ''} ${playable ? 'playable' : 'illegal'}`}
               disabled={!playable}
               aria-pressed={isSelected}

@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @topthis/shared build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @topthis/shared build && vitest run",
+    "test": "pnpm --filter @topthis/shared build && pnpm build && vitest run && node scripts/production-smoke.mjs",
     "dev": "pnpm --filter @topthis/shared build && tsx watch src/main.ts",
     "start": "node dist/main.js"
   },
