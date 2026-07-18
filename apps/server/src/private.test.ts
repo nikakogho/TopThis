@@ -6,6 +6,7 @@ import {
   type LobbyAck,
   type LobbyLeaveAck,
   type PrivateMatchAck,
+  type PrivateMatchLeaveAck,
   type PrivateMatchView,
   type QueueAck,
 } from '@topthis/shared';
@@ -184,6 +185,49 @@ describe('private multiplayer integration', () => {
     });
   });
 
+  it('allows anonymous Practice but rejects explicitly invalid socket tokens', async () => {
+    await start();
+    const anonymous = (await connect()).socket;
+    expect(
+      await emitAck<{ ok: boolean }>(anonymous, 'practice:create', {
+        displayName: 'Practice Player',
+        botCount: 1,
+      }),
+    ).toMatchObject({ ok: true });
+
+    const undefinedToken = clientIo(baseUrl, {
+      autoConnect: false,
+      transports: ['websocket'],
+      auth: { guestToken: undefined },
+      reconnection: false,
+    });
+    clients.push(undefinedToken);
+    const anonymousConnect = new Promise<void>((resolve, reject) => {
+      undefinedToken.once('connect', resolve);
+      undefinedToken.once('connect_error', reject);
+    });
+    undefinedToken.connect();
+    await anonymousConnect;
+    expect(
+      await emitAck<{ ok: boolean }>(undefinedToken, 'practice:create', {
+        displayName: 'Undefined Token',
+        botCount: 1,
+      }),
+    ).toMatchObject({ ok: true });
+
+    const invalid = clientIo(baseUrl, {
+      autoConnect: false,
+      transports: ['websocket'],
+      auth: { guestToken: 'not-a-valid-topthis-token' },
+      reconnection: false,
+    });
+    clients.push(invalid);
+    const rejected = new Promise<Error>((resolve) => invalid.once('connect_error', resolve));
+    invalid.connect();
+    await expect(rejected).resolves.toMatchObject({ message: 'INVALID_GUEST_TOKEN' });
+    expect(invalid.connected).toBe(false);
+  });
+
   it('enforces lobby authorization and transfers host after disconnect grace', async () => {
     await start({ disconnectGraceMs: 20 });
     const host = await createGuest('Host');
@@ -271,6 +315,15 @@ describe('private multiplayer integration', () => {
       ok: false,
       error: { code: 'COMMAND_REJECTED' },
     });
+    expect(
+      await emitAck<PrivateMatchAck>(currentSocket, 'match:skip', {
+        commandId: 'forged-player1',
+        matchId: current.matchId,
+        expectedStateVersion: current.stateVersion,
+        expectedTurnId: current.turnId!,
+        playerId: states.find((state) => state.yourPlayerId !== current.yourPlayerId)!.yourPlayerId,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_PAYLOAD' } });
 
     const firstSkip = {
       commandId: 'accepted1',
@@ -326,6 +379,61 @@ describe('private multiplayer integration', () => {
     expect(driver.winnerIds).toHaveLength(1);
     expect(driver.placements).toHaveLength(3);
     expect(driver.placements?.[0]).toBe(driver.winnerIds?.[0]);
+  });
+
+  it('releases only completed ownership so a guest can immediately host or queue again', async () => {
+    const game = await makeLobby(2, {
+      targetScore: 1,
+      turnDurationMs: 10,
+      roundResultDelayMs: 5,
+      disconnectGraceMs: 100,
+    });
+    const active = game.states.find((state) => state.yourPlayerId === state.currentPlayerId)!;
+    const activeSocket = game.sockets.find(
+      (socket, index) => game.guests[index]!.guest.id === active.yourPlayerId,
+    )!;
+    expect(await emitAck<PrivateMatchLeaveAck>(activeSocket, 'match:leave', {})).toMatchObject({
+      ok: false,
+      error: { code: 'MATCH_ACTIVE' },
+    });
+    expect(
+      await emitAck<PrivateMatchLeaveAck>(activeSocket, 'match:leave', { matchId: active.matchId }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_PAYLOAD' } });
+
+    const completed = await waitForEvent<PrivateMatchView>(
+      game.sockets[0]!,
+      'match:state',
+      (view) => view.phase === 'completed',
+      1_000,
+    );
+    expect(await emitAck<PrivateMatchLeaveAck>(game.sockets[0]!, 'match:leave', {})).toEqual({
+      ok: true,
+    });
+    expect(await emitAck<PrivateMatchLeaveAck>(game.sockets[0]!, 'match:leave', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NO_SESSION' },
+    });
+    expect(await emitAck<LobbyAck>(game.sockets[0]!, 'lobby:create', {})).toMatchObject({
+      ok: true,
+    });
+    expect(await emitAck<LobbyLeaveAck>(game.sockets[0]!, 'lobby:leave', {})).toEqual({ ok: true });
+    expect(await emitAck<QueueAck>(game.sockets[0]!, 'queue:enter', {})).toMatchObject({
+      ok: true,
+      status: { queued: true, position: 1 },
+    });
+    expect(await emitAck<QueueAck>(game.sockets[0]!, 'queue:leave', {})).toMatchObject({
+      ok: true,
+    });
+
+    // Releasing one guest must not break another guest's completed-match reconnect.
+    game.sockets[1]!.close();
+    const replacement = await connect(game.guests[1]!.token, 'match:state');
+    const restored = (await replacement.initial) as PrivateMatchView;
+    expect(restored.matchId).toBe(completed.matchId);
+    expect(restored.phase).toBe('completed');
+    expect(await emitAck<PrivateMatchLeaveAck>(replacement.socket, 'match:leave', {})).toEqual({
+      ok: true,
+    });
   });
 
   it('uses private turn timeouts and advances abandoned seats through normal commands', async () => {

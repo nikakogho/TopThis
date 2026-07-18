@@ -11,6 +11,8 @@ import {
   type PracticeAck,
   type PracticeMatchView,
   type PrivateMatchAck,
+  type PrivateMatchLeaveAck,
+  PrivateMatchLeaveAckSchema,
   type PrivateMatchView,
   type QueueStatus,
   type QueueAck,
@@ -33,10 +35,44 @@ type Screen =
   | 'queue'
   | 'leaderboard';
 
+const initialGuestToken = localStorage.getItem('topthis.guestToken');
 const socket = io(import.meta.env.VITE_TOPTHIS_SERVER_URL || undefined, {
   autoConnect: false,
-  auth: { guestToken: localStorage.getItem('topthis.guestToken') ?? undefined },
+  auth: initialGuestToken ? { guestToken: initialGuestToken } : {},
 }) as Socket;
+
+async function connectAuthenticated(token: string): Promise<void> {
+  const currentToken =
+    typeof socket.auth === 'object' && socket.auth
+      ? (socket.auth as { guestToken?: unknown }).guestToken
+      : undefined;
+  if (socket.connected && currentToken === token) return;
+  socket.auth = { guestToken: token };
+  if (socket.connected) socket.disconnect();
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => finish(new Error('Authentication timed out.')), 8000);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      socket.off('connect', onConnect);
+      socket.off('connect_error', onError);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onConnect = () => finish();
+    const onError = (reason: unknown) =>
+      finish(
+        new Error(
+          reason instanceof Error ? reason.message : 'Could not authenticate with TopThis Server.',
+        ),
+      );
+    socket.once('connect', onConnect);
+    socket.once('connect_error', onError);
+    socket.connect();
+  });
+}
 
 function isEditable(target: EventTarget | null): boolean {
   return (
@@ -89,6 +125,7 @@ function App() {
   const [guestName, setGuestName] = useState('Player');
   const [pendingAction, setPendingAction] = useState<'host' | 'join'>('host');
   const [pendingQueue, setPendingQueue] = useState(false);
+  const [identityReturnLanding, setIdentityReturnLanding] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [settings, setSettings] = useState({
     playerCount: 2,
@@ -211,14 +248,30 @@ function App() {
       .then((v) => {
         const response = GuestMeResponseSchema.parse(v);
         setGuest(response.guest);
-        socket.auth = { guestToken: token };
-        socket.connect();
+        void connectAuthenticated(token).catch((reason: unknown) => {
+          localStorage.removeItem('topthis.guestToken');
+          socket.auth = {};
+          setGuest(undefined);
+          setError(
+            reason instanceof Error
+              ? `Saved multiplayer session expired. ${reason.message}`
+              : 'Saved multiplayer session expired. Choose a display name to continue.',
+          );
+          setGuestName('Player');
+          setScreen('identity');
+        });
       })
       .catch((reason: unknown) => {
         localStorage.removeItem('topthis.guestToken');
         socket.auth = {};
         setGuest(undefined);
-        if (reason instanceof TypeError) setError('Could not validate the saved guest session.');
+        setError(
+          reason instanceof Error
+            ? `${reason.message} Choose a display name to continue.`
+            : 'Could not validate the saved guest session. Choose a display name to continue.',
+        );
+        setGuestName('Player');
+        setScreen('identity');
       });
   }, []);
 
@@ -231,7 +284,6 @@ function App() {
         if (r.ok) {
           const response = GuestMeResponseSchema.parse(await r.json());
           setGuest(response.guest);
-          socket.auth = { guestToken: token };
           return response.guest;
         }
       } catch {
@@ -248,9 +300,26 @@ function App() {
     if (!r.ok) throw new Error('Could not create the guest profile.');
     const response = GuestCreateResponseSchema.parse(await r.json());
     localStorage.setItem('topthis.guestToken', response.token);
-    socket.auth = { guestToken: response.token };
     setGuest(response.guest);
     return response.guest;
+  };
+  const recoverAuth = () => {
+    localStorage.removeItem('topthis.guestToken');
+    socket.auth = {};
+    socket.disconnect();
+    setGuest(undefined);
+    setGuestName('Player');
+    setPendingQueue(false);
+    setError('Your multiplayer session expired. Choose a display name to continue.');
+    setScreen('identity');
+  };
+  const isAuthRequired = (ack: unknown) => {
+    const code = (ack as { error?: { code?: unknown } })?.error?.code;
+    if (code === 'AUTH_REQUIRED' || code === 'INVALID_GUEST_TOKEN') {
+      recoverAuth();
+      return true;
+    }
+    return false;
   };
   const openPrivate = (action: 'host' | 'join') => {
     setPendingAction(action);
@@ -261,8 +330,7 @@ function App() {
     setError('');
     try {
       if (!knownGuest) await ensureGuest();
-      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
-      socket.connect();
+      await connectAuthenticated(localStorage.getItem('topthis.guestToken')!);
       socket.emit('queue:enter', {}, (raw: QueueAck) => {
         const ack = QueueAckSchema.parse(raw);
         setBusy(false);
@@ -270,7 +338,7 @@ function App() {
           setQueueStatus(ack.status);
           // Pairing can emit match:state before this acknowledgement arrives.
           if (ack.status.queued) setScreen('queue');
-        } else setError(ack.error.message);
+        } else if (!isAuthRequired(ack)) setError(ack.error.message);
       });
     } catch (reason) {
       setBusy(false);
@@ -304,14 +372,13 @@ function App() {
     setError('');
     try {
       await ensureGuest();
-      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
-      socket.connect();
+      await connectAuthenticated(localStorage.getItem('topthis.guestToken')!);
       socket.emit('lobby:create', { settings }, (ack: LobbyAck) => {
         setBusy(false);
         if (ack.ok) {
           setLobby(ack.view);
           setScreen('lobby');
-        } else setError(ack.error.message);
+        } else if (!isAuthRequired(ack)) setError(ack.error.message);
       });
     } catch (reason) {
       setBusy(false);
@@ -323,8 +390,7 @@ function App() {
     setError('');
     try {
       await ensureGuest();
-      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
-      socket.connect();
+      await connectAuthenticated(localStorage.getItem('topthis.guestToken')!);
       socket.emit(
         'lobby:join',
         { code: joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '') },
@@ -333,7 +399,7 @@ function App() {
           if (ack.ok) {
             setLobby(ack.view);
             setScreen('lobby');
-          } else setError(ack.error.message);
+          } else if (!isAuthRequired(ack)) setError(ack.error.message);
         },
       );
     } catch (reason) {
@@ -349,7 +415,7 @@ function App() {
     setError('');
     socket.emit(event, payload, (ack: LobbyAck) => {
       if (ack.ok) setLobby(ack.view);
-      else setError(ack.error.message);
+      else if (!isAuthRequired(ack)) setError(ack.error.message);
     });
   };
 
@@ -377,7 +443,7 @@ function App() {
         setView(ack.view);
         setScreen('match');
       } else {
-        setError(ack.error.message);
+        if (!isAuthRequired(ack)) setError(ack.error.message);
       }
     });
   };
@@ -421,6 +487,30 @@ function App() {
           A strategic multiplayer card game where every card has its own counters, and the last
           successful play takes the pile.
         </p>
+        <section className="identity-status" aria-label="Multiplayer identity">
+          {guest ? (
+            <>
+              <strong>Playing as {guest.displayName}</strong>
+              <span>This saved local guest profile is used for multiplayer.</span>
+              <button
+                className="link"
+                onClick={() => {
+                  setGuestName(guest.displayName);
+                  localStorage.removeItem('topthis.guestToken');
+                  socket.disconnect();
+                  socket.auth = {};
+                  setGuest(undefined);
+                  setIdentityReturnLanding(true);
+                  setScreen('identity');
+                }}
+              >
+                Change player
+              </button>
+            </>
+          ) : (
+            <span>Multiplayer will create a saved local guest profile with your display name.</span>
+          )}
+        </section>
         <div className="actions">
           <button onClick={() => setScreen('setup')}>Practice</button>
           <button onClick={() => openPrivate('host')}>Host Game</button>
@@ -628,6 +718,9 @@ function App() {
               if (pendingQueue) {
                 setPendingQueue(false);
                 await enterQueue(identity);
+              } else if (identityReturnLanding) {
+                setIdentityReturnLanding(false);
+                setScreen('landing');
               } else setScreen(pendingAction);
             } catch (reason) {
               setError(reason instanceof Error ? reason.message : 'Could not create the guest.');
@@ -1094,7 +1187,44 @@ function App() {
               <p>Dealing the next challenge…</p>
             ) : (
               <button
-                onClick={() => {
+                disabled={busy}
+                onClick={async () => {
+                  if (networked && view.phase === 'completed') {
+                    setBusy(true);
+                    try {
+                      const released = await new Promise<boolean>((resolve) => {
+                        let settled = false;
+                        const finish = (value: boolean) => {
+                          if (settled) return;
+                          settled = true;
+                          window.clearTimeout(timeout);
+                          resolve(value);
+                        };
+                        const timeout = window.setTimeout(() => {
+                          setError('Could not release the completed match. Please try again.');
+                          finish(false);
+                        }, 8000);
+                        socket.emit('match:leave', {}, (raw: PrivateMatchLeaveAck) => {
+                          try {
+                            const ack = PrivateMatchLeaveAckSchema.parse(raw);
+                            if (!ack.ok) {
+                              setError(ack.error.message);
+                              finish(false);
+                            } else finish(true);
+                          } catch {
+                            setError('Could not release the completed match. Please try again.');
+                            finish(false);
+                          }
+                        });
+                      });
+                      if (!released) return;
+                    } catch {
+                      setError('Could not release the completed match. Please try again.');
+                      return;
+                    } finally {
+                      setBusy(false);
+                    }
+                  }
                   setView(undefined);
                   setPrivateView(undefined);
                   setSelected(undefined);
@@ -1102,7 +1232,7 @@ function App() {
                   setScreen(networked ? 'landing' : 'setup');
                 }}
               >
-                {networked ? 'Return home' : 'New practice'}
+                {busy ? 'Leaving match…' : networked ? 'Return home' : 'New practice'}
               </button>
             )}
           </section>

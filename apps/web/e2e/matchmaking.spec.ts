@@ -127,7 +127,20 @@ test('two guests match, complete through the rendered table, and retain leaderbo
       await expect(result).toContainText('Final place:');
     }
 
+    // Before explicitly leaving, the authenticated socket can reclaim its completed result.
+    await one.reload();
+    await expect(one.getByText('MATCH RESULT')).toBeVisible();
     await one.getByRole('button', { name: 'Return home' }).click();
+    await expect(one.getByText('Playing as Match Ada')).toBeVisible();
+
+    // match:leave releases completed ownership, so the same profile can immediately begin
+    // another protected server session instead of receiving ALREADY_ACTIVE.
+    await one.getByRole('button', { name: 'Host Game' }).click();
+    await expect(one.getByRole('heading', { name: 'Host a lobby' })).toBeVisible();
+    await one.getByRole('button', { name: 'Create lobby' }).click();
+    await expect(one.getByRole('heading', { name: /Code:/ })).toBeVisible();
+    await one.getByRole('button', { name: 'Leave lobby' }).click();
+
     await one.getByRole('button', { name: 'Leaderboard' }).click();
     const ratings = one.locator('table tbody tr').filter({ hasText: /Match (Ada|Bea)/ });
     await expect(ratings).toHaveCount(2);
@@ -143,9 +156,10 @@ test('two guests match, complete through the rendered table, and retain leaderbo
     expect(parsed[0]!.rating).toBeGreaterThan(parsed[1]!.rating);
     expect(parsed.map((entry) => entry.record).sort()).toEqual(['0-1-0', '1-0-0']);
     await one.reload();
-    // The authenticated socket restores the completed authoritative match after reload.
-    await expect(one.getByText('MATCH RESULT')).toBeVisible();
-    await one.getByRole('button', { name: 'Return home' }).click();
+    await expect(
+      one.getByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeVisible();
+    await expect(one.getByText('MATCH RESULT')).toHaveCount(0);
     await one.getByRole('button', { name: 'Leaderboard' }).click();
     await expect(one.locator('table tbody tr').filter({ hasText: /Match (Ada|Bea)/ })).toHaveCount(
       2,

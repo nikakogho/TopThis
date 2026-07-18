@@ -5,6 +5,7 @@ import {
   QueueAckSchema,
   QueueIntentSchema,
   PrivateMatchAckSchema,
+  PrivateMatchLeaveAckSchema,
   PublicServerHandshakeSchema,
   SocketErrorSchema,
   type PublicServerHandshake,
@@ -27,6 +28,7 @@ export const SOCKET_EVENTS = {
   lobbyLeave: 'lobby:leave',
   matchPlay: 'match:play',
   matchSkip: 'match:skip',
+  matchLeave: 'match:leave',
   matchState: 'match:state',
   queueEnter: 'queue:enter',
   queueLeave: 'queue:leave',
@@ -115,6 +117,7 @@ export function attachSocketBoundary(
         'NOT_HOST',
         'NOT_READY',
         'RECONNECT_EXPIRED',
+        'MATCH_ACTIVE',
       ].includes(message)
         ? message
         : message === 'NO_SESSION'
@@ -181,6 +184,16 @@ export function attachSocketBoundary(
           ack?.(PrivateMatchAckSchema.parse({ ok: false, error: failure(error) }));
         }
       });
+    socket.on(SOCKET_EVENTS.matchLeave, (raw: unknown, ack?: (v: unknown) => void) => {
+      try {
+        if (socket.data.privateReconnectError)
+          throw Error(String(socket.data.privateReconnectError));
+        privateService.leaveCompleted(socket, raw);
+        ack?.(PrivateMatchLeaveAckSchema.parse({ ok: true }));
+      } catch (error) {
+        ack?.(PrivateMatchLeaveAckSchema.parse({ ok: false, error: failure(error) }));
+      }
+    });
     socket.on('disconnect', () => privateService.disconnect(socket));
   }
 }

@@ -49,6 +49,7 @@ export const SocketErrorSchema = z
       'NOT_READY',
       'RECONNECT_EXPIRED',
       'QUEUE_UNAVAILABLE',
+      'MATCH_ACTIVE',
     ]),
     message: z.string().min(1),
   })
@@ -221,6 +222,13 @@ export const PrivateMatchAckSchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 export type PrivateMatchAck = z.infer<typeof PrivateMatchAckSchema>;
+/** Releases this guest's ownership after an authoritative completed match. */
+export const PrivateMatchLeaveIntentSchema = z.object({}).strict();
+export const PrivateMatchLeaveAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }).strict(),
+  z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
+]);
+export type PrivateMatchLeaveAck = z.infer<typeof PrivateMatchLeaveAckSchema>;
 
 /** Matchmaking deliberately exposes no opponent identity or match secrets. */
 export const QueueStatusSchema = z

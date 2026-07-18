@@ -91,6 +91,26 @@ main {
   font-size: clamp(1rem, 2vw, 1.28rem);
   line-height: 1.55;
 }
+.identity-status {
+  max-width: 40rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #3d374a;
+  border-radius: 0.7rem;
+  color: #aaa2b4;
+  background: #17151e;
+  font-size: 0.84rem;
+}
+.identity-status strong {
+  color: #fff;
+}
+.identity-status .link {
+  margin-left: auto;
+  padding: 0.25rem 0.4rem;
+}
 .actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(9rem, 1fr));

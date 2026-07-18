@@ -14,12 +14,29 @@ type Handler = (...args: unknown[]) => void;
 const socketMock = vi.hoisted(() => {
   const handlers = new Map<string, Set<Handler>>();
   const emitted: Array<{ event: string; args: unknown[] }> = [];
+  const lifecycle: string[] = [];
   const eventAcks = new Map<string, unknown>();
   let nextAck: unknown;
+  let nextConnectError: Error | undefined;
   const api = {
     auth: {} as Record<string, unknown>,
     connected: true,
-    connect: vi.fn(),
+    connect: vi.fn(() => {
+      lifecycle.push(`connect:${String(api.auth.guestToken ?? '')}`);
+      if (nextConnectError) {
+        const error = nextConnectError;
+        nextConnectError = undefined;
+        handlers.get('connect_error')?.forEach((handler) => handler(error));
+        return;
+      }
+      api.connected = true;
+      handlers.get('connect')?.forEach((handler) => handler());
+    }),
+    disconnect: vi.fn(() => {
+      lifecycle.push('disconnect');
+      api.connected = false;
+      handlers.get('disconnect')?.forEach((handler) => handler('io client disconnect'));
+    }),
     on: vi.fn((event: string, handler: Handler) => {
       const set = handlers.get(event) ?? new Set<Handler>();
       set.add(handler);
@@ -30,8 +47,20 @@ const socketMock = vi.hoisted(() => {
       handlers.get(event)?.delete(handler);
       return api;
     }),
+    once: vi.fn((event: string, handler: Handler) => {
+      const wrapper: Handler = (...args) => {
+        handlers.get(event)?.delete(wrapper);
+        handler(...args);
+      };
+      const set = handlers.get(event) ?? new Set<Handler>();
+      set.add(wrapper);
+      handlers.set(event, set);
+      return api;
+    }),
     emit: vi.fn((event: string, ...args: unknown[]) => {
       emitted.push({ event, args });
+      if (['lobby:create', 'lobby:join', 'queue:enter', 'match:leave'].includes(event))
+        lifecycle.push(`emit:${event}`);
       const ack = args.at(-1);
       const value = eventAcks.has(event) ? eventAcks.get(event) : nextAck;
       if (typeof ack === 'function' && value !== undefined) (ack as Handler)(value);
@@ -41,6 +70,7 @@ const socketMock = vi.hoisted(() => {
   return {
     api,
     emitted,
+    lifecycle,
     handlers,
     setAck(value: unknown) {
       nextAck = value;
@@ -48,10 +78,15 @@ const socketMock = vi.hoisted(() => {
     setAckFor(event: string, value: unknown) {
       eventAcks.set(event, value);
     },
+    setConnectError(error: Error) {
+      nextConnectError = error;
+    },
     reset() {
       emitted.length = 0;
+      lifecycle.length = 0;
       eventAcks.clear();
       nextAck = undefined;
+      nextConnectError = undefined;
       api.auth = {};
       api.connected = true;
     },
@@ -340,6 +375,10 @@ describe('TopThis private multiplayer UI', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/guests/me', {
       headers: { Authorization: 'Bearer valid-token-that-is-at-least-thirty-two-characters' },
     });
+    expect(await screen.findByText('Playing as Ada')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Change player' }));
+    expect(screen.getByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
+    expect(localStorage.getItem('topthis.guestToken')).toBeNull();
 
     first.unmount();
     socketMock.reset();
@@ -349,6 +388,8 @@ describe('TopThis private multiplayer UI', () => {
     render(<App />);
     await waitFor(() => expect(localStorage.getItem('topthis.guestToken')).toBeNull());
     expect(socketMock.api.connect).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose a display name to continue');
   });
 
   it('creates and stores a guest before hosting a lobby', async () => {
@@ -375,10 +416,50 @@ describe('TopThis private multiplayer UI', () => {
     fireEvent.change(screen.getByLabelText('Target score'), { target: { value: '75' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create lobby' }));
     expect(await screen.findByRole('heading', { name: 'Code: AB23CD' })).toBeTruthy();
+    expect(socketMock.lifecycle).toEqual(['disconnect', `connect:${token}`, 'emit:lobby:create']);
     const create = socketMock.emitted.find(({ event }) => event === 'lobby:create');
     expect(create?.args[0]).toEqual({
       settings: { playerCount: 2, targetScore: 75, turnDurationSeconds: 20 },
     });
+  });
+
+  it('recovers a rejected saved-token socket handshake to identity', async () => {
+    const token = 'rejected-token-that-is-at-least-thirty-two-characters';
+    localStorage.setItem('topthis.guestToken', token);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ guest: ada }) }),
+    );
+    socketMock.setConnectError(new Error('INVALID_GUEST_TOKEN'));
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
+    expect(screen.getByRole('alert')).toHaveTextContent('Saved multiplayer session expired');
+    expect(localStorage.getItem('topthis.guestToken')).toBeNull();
+  });
+
+  it('recovers an AUTH_REQUIRED protected acknowledgement to identity', async () => {
+    const token = 'recovery-token-that-is-at-least-thirty-two-characters';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ guest: ada, token }) }),
+    );
+    socketMock.setAckFor('lobby:create', {
+      ok: false,
+      error: { code: 'AUTH_REQUIRED', message: 'AUTH_REQUIRED' },
+    } satisfies LobbyAck);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Host Game' }));
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Ada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('heading', { name: 'Host a lobby' });
+    fireEvent.click(screen.getByRole('button', { name: 'Create lobby' }));
+
+    expect(await screen.findByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
+    expect(screen.getByRole('alert')).toHaveTextContent('multiplayer session expired');
+    expect(localStorage.getItem('topthis.guestToken')).toBeNull();
   });
 
   it('normalizes a join code and renders non-host lobby controls safely', async () => {
@@ -471,6 +552,53 @@ describe('TopThis private multiplayer UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
     expect(socketMock.emitted.some(({ event }) => event === 'match:skip')).toBe(true);
     expect(socketMock.emitted.some(({ event }) => event.startsWith('practice:'))).toBe(false);
+  });
+
+  it('releases a completed multiplayer match before returning home', async () => {
+    socketMock.setAckFor('match:leave', { ok: true });
+    render(<App />);
+    const completed: PrivateMatchView = {
+      ...privateMatchView,
+      phase: 'completed',
+      stateVersion: 12,
+      currentPlayerId: undefined,
+      turnId: undefined,
+      turnEndsAt: undefined,
+      winnerIds: ['human1'],
+      placements: ['human1', 'guest2'],
+      roundResult: { winnerId: 'human1', pileCount: 3, capturedCardCount: 3 },
+    };
+    act(() => socketMock.handlers.get('match:state')?.forEach((handler) => handler(completed)));
+    fireEvent.click(screen.getByRole('button', { name: 'Return home' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeTruthy();
+    expect(socketMock.lifecycle).toContain('emit:match:leave');
+  });
+
+  it('keeps the completed result open when match release fails', async () => {
+    socketMock.setAckFor('match:leave', {
+      ok: false,
+      error: { code: 'NO_SESSION', message: 'Could not release this match.' },
+    });
+    render(<App />);
+    const completed: PrivateMatchView = {
+      ...privateMatchView,
+      phase: 'completed',
+      stateVersion: 12,
+      currentPlayerId: undefined,
+      turnId: undefined,
+      turnEndsAt: undefined,
+      winnerIds: ['human1'],
+      placements: ['human1', 'guest2'],
+      roundResult: { winnerId: 'human1', pileCount: 3, capturedCardCount: 3 },
+    };
+    act(() => socketMock.handlers.get('match:state')?.forEach((handler) => handler(completed)));
+    fireEvent.click(screen.getByRole('button', { name: 'Return home' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not release this match.');
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });
 

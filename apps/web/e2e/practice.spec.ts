@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('completes a deterministic server-authoritative practice match', async ({
+test('upgrades an anonymous practice connection before hosting multiplayer', async ({
   page,
 }, testInfo) => {
   const consoleLines: string[] = [];
@@ -55,6 +55,20 @@ test('completes a deterministic server-authoritative practice match', async ({
 
   await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole('button', { name: 'New practice' })).toBeVisible();
+  await page.getByRole('button', { name: 'New practice' }).click();
+  await page.getByRole('button', { name: 'Back' }).click();
+
+  // This socket connected anonymously for Practice. Guest creation must replace that
+  // handshake before the protected lobby event, or the server returns AUTH_REQUIRED.
+  await page.getByRole('button', { name: 'Host Game' }).click();
+  await page.getByLabel('Display name').fill('Multiplayer Ada');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Host a lobby' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create lobby' }).click();
+  await expect(page.getByRole('heading', { name: /Code:/ })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Leave lobby' }).click();
+  await expect(page.getByText('Playing as Multiplayer Ada')).toBeVisible();
 
   if (
     testInfo.status !== testInfo.expectedStatus ||

@@ -94,13 +94,18 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
     return LeaderboardResponseSchema.parse(guests.leaderboard(page, pageSize));
   });
   io.use((socket, next) => {
-    const token =
-      typeof socket.handshake.auth.guestToken === 'string'
-        ? socket.handshake.auth.guestToken
-        : undefined;
+    const auth = socket.handshake.auth;
+    // The browser keeps this key with `undefined` before a profile is created.
+    // That remains an anonymous Practice connection; every concrete value is auth.
+    const suppliedToken = auth.guestToken !== undefined;
+    const token = typeof auth.guestToken === 'string' ? auth.guestToken : undefined;
     const guest = token && guests.findByToken(token);
+    if (suppliedToken && !guest) {
+      next(new Error('INVALID_GUEST_TOKEN'));
+      return;
+    }
     if (guest) socket.data.guest = guest;
-    next(); // unauthenticated practice sockets remain valid
+    next(); // Truly anonymous practice sockets remain valid.
   });
   io.on('connection', (socket) => attachSocketBoundary(socket, practice, privateService));
 

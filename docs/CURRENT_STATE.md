@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Complete — Enhancement 1 release gate passed
-- Last completed phase: Enhancement 1 — seated table and longer interactive rounds
+- Active phase: Complete — Enhancement 2 release gate passed
+- Last completed phase: Enhancement 2 — authenticated authoritative multiplayer
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -891,3 +891,160 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
   workspace build, all 72 tests, typecheck, lint and format checks pass. The full
   default-parallel Playwright suite passes 6/6, including private reconnect,
   matchmaking ratings, practice, responsive rules and all new table geometry.
+
+## Enhancement 2 delegation ledger
+
+### SOL DECISIONS
+
+- Keep the existing anonymous guest model: multiplayer asks for a display name,
+  the server issues one opaque 256-bit token, only its SHA-256 hash is persisted,
+  and the browser restores that guest on later visits. No external account,
+  password or third-party credential is required.
+- Socket.IO identity is established only during the connection handshake. After
+  creating, restoring or changing a guest, the client must set the token,
+  replace any stale anonymous connection, wait for the authenticated connection,
+  and only then emit a protected lobby, queue or match action. Calling
+  `connect()` on an already-connected anonymous socket is insufficient and is
+  the reproduced cause of the user-visible `AUTH_REQUIRED` failures.
+- Anonymous connections remain permitted for Practice. A handshake that
+  explicitly supplies an invalid guest token must be rejected instead of being
+  silently downgraded to anonymous access.
+- Add an explicit authenticated completed-match leave operation. Returning home
+  releases that guest's server-side match ownership so the same profile can
+  immediately host, join or queue again; active matches cannot use this release
+  path to evade authoritative abandonment/timeout behavior.
+- The Fastify/Socket.IO process remains the sole authority for identity, lobby
+  membership, host permissions, deck selection, private hands, legal moves,
+  command serialization, turn deadlines, scoring, completion and ratings. The
+  host browser may choose validated lobby settings but never owns game state or
+  adjudicates rules.
+- Make authentication discoverable on the landing screen: show whether a saved
+  guest is active, explain that multiplayer creates a local guest profile, and
+  offer a safe change-player action when no lobby/match is active. Translate
+  expired/invalid sessions into a recovery screen rather than exposing raw
+  `AUTH_REQUIRED` as a dead end.
+- Release evidence must include the exact same-page anonymous Practice to guest
+  multiplayer transition, a completed match followed by another protected
+  session, real 2/3-client private and two-client matchmaking connections,
+  same-token socket replacement, hidden-hand isolation, forged/stale/duplicate
+  command rejection, host-only controls, timeout/reconnect behavior and invalid
+  token rejection.
+
+### TERRA TASKS
+
+- Own `packages/shared/**`, `apps/server/**` and focused server integration tests
+  for Enhancement 2. Add a validated completed-match leave event/ack, release
+  completed guest ownership without weakening active-match behavior, and reject
+  explicitly invalid Socket.IO guest tokens at handshake while retaining truly
+  anonymous Practice connections.
+- Extend real-client server tests for invalid-token handshakes, completed release
+  followed by a new lobby/queue, repeated release safety, active-match rejection,
+  host-only settings/start, same-token replacement, recipient hand isolation and
+  client attempts to forge player identity or card ownership. Use the normal
+  Socket.IO boundary rather than calling service internals for security claims.
+- Do not change engine/content/UI/E2E/docs/root configuration, weaken Zod strict
+  schemas, trust client player IDs, move rules into a browser, expose opponent
+  hands, or spawn subagents. Preserve concurrent web changes.
+- Definition of done: anonymous Practice still connects; malformed/invalid auth
+  cannot access multiplayer; real authenticated sockets can complete, release
+  and start another protected session; every server-authority/privacy invariant
+  is covered through public boundaries.
+- Verification: shared and server build/test/typecheck, scoped lint/format, plus
+  the new real-Socket.IO integration tests with at least three simultaneous
+  authenticated clients.
+
+### LUNA TASKS
+
+- Own `apps/web/src/**`, `apps/web/e2e/**` and the multiplayer auth presentation
+  for Enhancement 2. Implement one reusable authenticated-connect path that
+  creates/restores the guest, replaces a stale anonymous handshake, waits for
+  connection success, and only then emits host/join/queue actions.
+- Add visible landing identity status/help and a change-player action; recover
+  invalid/expired auth to the display-name screen with a helpful message. On
+  networked match completion, send the new leave event before returning home so
+  the profile can immediately host/join/queue again.
+- Add component tests for an already-connected anonymous Practice socket being
+  reconnected with the new token before a protected emit, restored-token reuse,
+  auth error recovery and completed-match release. Extend Playwright with a real
+  same-page Practice-to-private regression and a second multiplayer session;
+  retain the existing multi-context private/matchmaking flows and privacy checks.
+- Do not edit server/shared/engine/content/root/docs, add password/OAuth UI,
+  expose tokens, bypass the server, duplicate rule logic, or spawn subagents.
+  Preserve concurrent server changes and adapt to the agreed event contract.
+- Definition of done: users never encounter a dead-end raw `AUTH_REQUIRED`;
+  protected actions work after Practice and after completion; identity state is
+  understandable; existing practice/private/matchmaking/leaderboard modes and
+  accessibility remain intact.
+- Verification: web test/build/typecheck, scoped lint/format, focused auth E2E,
+  and the full Playwright suite with real separate browser contexts.
+
+### TOO SMALL TO DELEGATE
+
+- Review the handshake/reconnect protocol, completed-match cleanup and event
+  schema together; reject any client-authoritative shortcut or token exposure.
+- Reproduce the stale anonymous connection against the pre-fix public boundary,
+  then independently verify the fixed same-page flow, concurrent private and
+  matchmaking games, reconnect, privacy and replay resistance in live clients.
+- Run the complete build/test/typecheck/lint/format/Playwright gate, keep this
+  record accurate, audit generated files/secrets, commit and push the passing
+  enhancement phase.
+
+## Enhancement 2 completion record
+
+### Delegated implementation
+
+- Terra owned the shared-contract, server-authority and public-boundary test
+  scope. Its first pass added strict completed-match release contracts, rejected
+  explicit invalid-token handshakes while preserving anonymous Practice, and
+  implemented completed-only ownership release. The server suite now exercises
+  real Socket.IO clients for three-player privacy, same-token replacement,
+  forged identity/card commands, stale/duplicate commands, host controls,
+  active/repeated release, reconnect and completed release followed by another
+  protected session.
+- Luna owned the web authentication and presentation scope. Two attempts
+  delivered the reusable authenticated reconnect path, identity status,
+  recovery UI and completed-match release, but did not deliver the required
+  browser regressions; the second attempt improved the socket lifecycle mock.
+  After those two incomplete attempts, Sol took over the narrowly remaining
+  component assertions and Playwright flows as permitted by the operating
+  instructions.
+- Sol verified the handshake boundary, added timeout-safe completed release,
+  expanded component coverage to 24 tests, and proved the exact anonymous
+  Practice-to-host and completed-match-to-second-session regressions through
+  the rendered application. No rules or hidden state moved into the client.
+
+### Authority and connection evidence
+
+- The fixed client disconnects a stale anonymous socket, installs the opaque
+  guest token, waits for the authenticated Socket.IO handshake, and only then
+  emits a protected action. A concrete invalid token is rejected at handshake;
+  a missing token remains valid only for anonymous Practice. The raw token is
+  kept in that browser's local storage but is neither logged nor persisted by
+  the server, which stores only its SHA-256 hash.
+- The server remains the sole authority for player identity, lobby membership,
+  host permissions, private hands, legal moves, version/idempotency checks,
+  turns, deadlines, scoring, completion and ratings. Recipient-specific views
+  expose only the requesting player's hand and legal card IDs; opponents expose
+  counts and public state. The browser host controls only schema-validated
+  settings and cannot adjudicate play.
+- Server integration tests use three simultaneous authenticated Socket.IO
+  clients. Playwright uses three isolated browser contexts for a private match
+  and two for matchmaking, including timeout, disconnect/reconnect and match
+  completion. The same-page Practice flow upgrades its already-connected
+  anonymous socket before hosting, and the matchmaking flow restores a completed
+  match, explicitly releases it, then immediately creates a second lobby with
+  the same guest profile.
+
+### Release evidence
+
+- Shared contracts pass 5/5 tests, the deterministic engine passes 25/25, the
+  server passes 25/25 plus its production smoke test, and the web client passes
+  24/24: 79 tests total. The full workspace build, typecheck, lint and format
+  checks pass.
+- The default-parallel Playwright suite passes 6/6, including responsive rules,
+  practice, real multi-context private and matchmaking sessions, reconnect,
+  ratings, the stale anonymous handshake regression and immediate post-match
+  profile reuse.
+- Built-in Browser review created a fresh local guest, opened an authenticated
+  private lobby without an auth error, left it, and confirmed the landing page
+  visibly retained `Playing as Browser Ada` with a change-player action.

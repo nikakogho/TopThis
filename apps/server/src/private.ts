@@ -17,6 +17,7 @@ import {
   LobbySettingsIntentSchema,
   LobbyViewSchema,
   PrivateMatchAckSchema,
+  PrivateMatchLeaveIntentSchema,
   PrivateMatchViewSchema,
   PrivatePlayIntentSchema,
   PrivateSkipIntentSchema,
@@ -341,6 +342,31 @@ export class PrivateService {
         );
       });
     });
+  }
+  /**
+   * A completed result remains reconnectable until each guest explicitly leaves.
+   * This only removes the caller's ownership; no client can abandon an active game.
+   */
+  leaveCompleted(s: Socket, raw: unknown): void {
+    PrivateMatchLeaveIntentSchema.parse(raw);
+    const g = this.guest(s);
+    const matchId = this.guestMatch.get(g.id);
+    const a = this.matches.get(matchId ?? '');
+    const seat = a?.seats.get(g.id);
+    if (!a || !seat || seat.socket?.id !== s.id) throw Error('NO_SESSION');
+    if (a.state.phase !== 'completed') throw Error('MATCH_ACTIVE');
+
+    this.guestMatch.delete(g.id);
+    seat.socket = undefined;
+    if (seat.grace) {
+      clearTimeout(seat.grace);
+      seat.grace = undefined;
+    }
+    if (![...a.seats.keys()].some((guestId) => this.guestMatch.get(guestId) === a.state.matchId)) {
+      if (a.timer) clearTimeout(a.timer);
+      if (a.round) clearTimeout(a.round);
+      this.matches.delete(a.state.matchId);
+    }
   }
   private submit(a: Active, c: MatchCommand) {
     a.queue = a.queue.then(() => {

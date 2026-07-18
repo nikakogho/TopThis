@@ -7,6 +7,8 @@ import {
   PracticeAckSchema,
   PracticeCreateIntentSchema,
   PracticeMatchViewSchema,
+  PrivateMatchLeaveAckSchema,
+  PrivateMatchLeaveIntentSchema,
   SafeIdSchema,
 } from './index.js';
 
@@ -87,6 +89,19 @@ describe('shared boundary contracts', () => {
       }),
     ).toThrow();
     expect(() => PracticeAckSchema.parse({ ok: false })).toThrow();
+  });
+
+  it('validates the completed-match release boundary strictly', () => {
+    expect(PrivateMatchLeaveIntentSchema.parse({})).toEqual({});
+    expect(PrivateMatchLeaveAckSchema.parse({ ok: true })).toEqual({ ok: true });
+    expect(() => PrivateMatchLeaveIntentSchema.parse({ matchId: 'client-forged' })).toThrow();
+    expect(() =>
+      PrivateMatchLeaveAckSchema.parse({
+        ok: false,
+        error: { code: 'MATCH_ACTIVE', message: 'MATCH_ACTIVE' },
+        extra: true,
+      }),
+    ).toThrow();
   });
 
   it('coerces bounded leaderboard pagination defaults at the HTTP boundary', () => {
