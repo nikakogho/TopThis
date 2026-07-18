@@ -1,0 +1,40 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #f6f1e8;
+  background: #17151f;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+main {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  max-width: 72rem;
+  margin: auto;
+}
+.eyebrow {
+  letter-spacing: 0.24em;
+  color: #d8a84e;
+  font-weight: 700;
+}
+h1 {
+  font-size: clamp(2.75rem, 7vw, 5.5rem);
+  line-height: 0.95;
+  margin: 0;
+  max-width: 16ch;
+}
+.tagline {
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+  max-width: 38rem;
+  color: #c9c2b6;
+}
+.status {
+  color: #d8a84e;
+}

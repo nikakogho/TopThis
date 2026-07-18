@@ -1,0 +1,27 @@
+{
+  "name": "topthis",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.14.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @topthis/web --filter @topthis/server dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r build && pnpm -r test",
+    "test:unit": "pnpm -r build && pnpm -r test",
+    "test:e2e": "playwright test",
+    "typecheck": "pnpm -r build && pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

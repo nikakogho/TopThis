@@ -1,0 +1,30 @@
+{
+  "name": "@topthis/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @topthis/shared build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @topthis/shared build && vitest run",
+    "dev": "pnpm --filter @topthis/shared build && tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.2.0",
+    "@topthis/shared": "workspace:*",
+    "fastify": "^5.2.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}
