@@ -3,21 +3,21 @@
     "id": "water.common",
     "name": "Water",
     "rarity": "common",
-    "masterPoolCopies": 30,
+    "masterPoolCopies": 24,
     "iconPath": "/cards/water.common.png",
     "description": "A flowing counter.",
     "tags": ["water"],
-    "beatsDefinitionIds": ["fire.common"]
+    "beatsDefinitionIds": ["fire.common", "rock.common", "paper.common"]
   },
   {
     "id": "water.rare",
     "name": "Water Rare",
     "rarity": "rare",
-    "masterPoolCopies": 25,
+    "masterPoolCopies": 21,
     "iconPath": "/cards/water.rare.png",
     "description": "A stronger current.",
     "tags": ["water"],
-    "beatsDefinitionIds": ["fire.common", "fire.rare"]
+    "beatsDefinitionIds": ["fire.common", "fire.rare", "rock.common", "paper.common"]
   },
   {
     "id": "water.epic",
@@ -27,7 +27,7 @@
     "iconPath": "/cards/water.epic.png",
     "description": "An overwhelming tide.",
     "tags": ["water"],
-    "beatsDefinitionIds": ["fire.common", "fire.rare", "fire.epic"]
+    "beatsDefinitionIds": ["fire.common", "fire.rare", "fire.epic", "rock.common", "paper.common"]
   },
   {
     "id": "water.legendary",
@@ -37,28 +37,48 @@
     "iconPath": "/cards/water.legendary.png",
     "description": "The primal sea.",
     "tags": ["water"],
-    "beatsDefinitionIds": ["fire.common", "fire.rare", "fire.epic", "fire.legendary"]
+    "beatsDefinitionIds": [
+      "fire.common",
+      "fire.rare",
+      "fire.epic",
+      "fire.legendary",
+      "rock.common",
+      "paper.common"
+    ]
   },
   {
     "id": "fire.common",
     "name": "Fire",
     "rarity": "common",
-    "masterPoolCopies": 30,
+    "masterPoolCopies": 24,
     "iconPath": "/cards/fire.common.png",
     "description": "A bright counter.",
     "tags": ["fire"],
-    "beatsDefinitionIds": ["water.common"],
+    "beatsDefinitionIds": [
+      "water.common",
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "ice.common"
+    ],
     "beatsTags": ["animal"]
   },
   {
     "id": "fire.rare",
     "name": "Fire Rare",
     "rarity": "rare",
-    "masterPoolCopies": 25,
+    "masterPoolCopies": 21,
     "iconPath": "/cards/fire.rare.png",
     "description": "A hotter flame.",
     "tags": ["fire"],
-    "beatsDefinitionIds": ["water.common", "water.rare"],
+    "beatsDefinitionIds": [
+      "water.common",
+      "water.rare",
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "ice.common"
+    ],
     "beatsTags": ["animal"]
   },
   {
@@ -69,7 +89,15 @@
     "iconPath": "/cards/fire.epic.png",
     "description": "A fierce blaze.",
     "tags": ["fire"],
-    "beatsDefinitionIds": ["water.common", "water.rare", "water.epic"],
+    "beatsDefinitionIds": [
+      "water.common",
+      "water.rare",
+      "water.epic",
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "ice.common"
+    ],
     "beatsTags": ["animal"]
   },
   {
@@ -80,14 +108,23 @@
     "iconPath": "/cards/fire.legendary.png",
     "description": "A world-consuming fire.",
     "tags": ["fire"],
-    "beatsDefinitionIds": ["water.common", "water.rare", "water.epic", "water.legendary"],
+    "beatsDefinitionIds": [
+      "water.common",
+      "water.rare",
+      "water.epic",
+      "water.legendary",
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "ice.common"
+    ],
     "beatsTags": ["animal"]
   },
   {
     "id": "gun.rare",
     "name": "Gun",
     "rarity": "rare",
-    "masterPoolCopies": 18,
+    "masterPoolCopies": 16,
     "iconPath": "/cards/gun.rare.png",
     "description": "A decisive shot.",
     "tags": ["weapon"],
@@ -98,71 +135,84 @@
     "id": "rust.common",
     "name": "Rust",
     "rarity": "common",
-    "masterPoolCopies": 24,
+    "masterPoolCopies": 20,
     "iconPath": "/cards/rust.common.png",
     "description": "Corrosion wins.",
     "tags": ["metal"],
-    "beatsDefinitionIds": ["gun.rare", "rocket.epic"]
+    "beatsDefinitionIds": ["gun.rare", "rocket.epic", "magnet.rare", "scissors.rare"]
   },
   {
     "id": "dirt.common",
     "name": "Dirt",
     "rarity": "common",
-    "masterPoolCopies": 28,
+    "masterPoolCopies": 22,
     "iconPath": "/cards/dirt.common.png",
     "description": "Grounds metal.",
     "tags": ["earth"],
-    "beatsDefinitionIds": ["rust.common"]
+    "beatsDefinitionIds": ["rust.common", "sponge.common", "magnet.rare", "paper.common"]
   },
   {
     "id": "mouse.common",
     "name": "Mouse",
     "rarity": "common",
-    "masterPoolCopies": 22,
+    "masterPoolCopies": 18,
     "iconPath": "/cards/mouse.common.png",
     "description": "A tiny survivor.",
     "tags": ["animal", "living-creature"],
-    "beatsDefinitionIds": ["dirt.common", "water.common"]
+    "beatsDefinitionIds": ["dirt.common", "water.common", "paper.common", "sponge.common"]
   },
   {
     "id": "cat.common",
     "name": "Cat",
     "rarity": "common",
-    "masterPoolCopies": 22,
+    "masterPoolCopies": 18,
     "iconPath": "/cards/cat.common.png",
     "description": "A patient hunter.",
     "tags": ["animal", "living-creature"],
-    "beatsDefinitionIds": ["mouse.common", "water.common"]
+    "beatsDefinitionIds": ["mouse.common", "water.common", "paper.common", "sponge.common"]
   },
   {
     "id": "dog.common",
     "name": "Dog",
     "rarity": "common",
-    "masterPoolCopies": 22,
+    "masterPoolCopies": 18,
     "iconPath": "/cards/dog.common.png",
     "description": "A loyal hunter.",
     "tags": ["animal", "living-creature"],
-    "beatsDefinitionIds": ["mouse.common", "water.common", "water.rare"]
+    "beatsDefinitionIds": [
+      "mouse.common",
+      "water.common",
+      "water.rare",
+      "paper.common",
+      "sponge.common"
+    ]
   },
   {
     "id": "cloud.common",
     "name": "Cloud",
     "rarity": "common",
-    "masterPoolCopies": 22,
+    "masterPoolCopies": 18,
     "iconPath": "/cards/cloud.common.png",
     "description": "A drifting veil.",
     "tags": ["sky"],
-    "beatsDefinitionIds": ["sun.rare"]
+    "beatsDefinitionIds": [
+      "sun.rare",
+      "fire.common",
+      "fire.rare",
+      "fire.epic",
+      "fire.legendary",
+      "rocket.epic"
+    ]
   },
   {
     "id": "sun.rare",
     "name": "Sun",
     "rarity": "rare",
-    "masterPoolCopies": 18,
+    "masterPoolCopies": 16,
     "iconPath": "/cards/sun.rare.png",
     "description": "A radiant star.",
     "tags": ["sky"],
-    "beatsDefinitionIds": []
+    "beatsDefinitionIds": ["cloud.common", "ice.common", "sponge.common"]
   },
   {
     "id": "rocket.epic",
@@ -172,7 +222,15 @@
     "iconPath": "/cards/rocket.epic.png",
     "description": "A launch upward.",
     "tags": ["machine"],
-    "beatsDefinitionIds": ["cloud.common", "gun.rare"]
+    "beatsDefinitionIds": [
+      "cloud.common",
+      "gun.rare",
+      "rock.common",
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "ice.common"
+    ]
   },
   {
     "id": "sea.epic",
@@ -182,7 +240,17 @@
     "iconPath": "/cards/sea.epic.png",
     "description": "The open ocean.",
     "tags": ["water"],
-    "beatsDefinitionIds": []
+    "beatsDefinitionIds": [
+      "fire.common",
+      "fire.rare",
+      "fire.epic",
+      "fire.legendary",
+      "rock.common",
+      "dirt.common",
+      "plant.common",
+      "magnet.rare",
+      "gun.rare"
+    ]
   },
   {
     "id": "ice.common",
@@ -192,7 +260,17 @@
     "iconPath": "/cards/ice.common.png",
     "description": "A provisional freeze.",
     "tags": ["ice"],
-    "beatsDefinitionIds": ["fire.common", "fire.rare"]
+    "beatsDefinitionIds": [
+      "fire.common",
+      "fire.rare",
+      "water.common",
+      "water.rare",
+      "water.epic",
+      "water.legendary",
+      "sea.epic",
+      "plant.common",
+      "sponge.common"
+    ]
   },
   {
     "id": "lightning.rare",
@@ -202,17 +280,116 @@
     "iconPath": "/cards/lightning.rare.png",
     "description": "A provisional strike.",
     "tags": ["storm"],
-    "beatsDefinitionIds": ["cloud.common", "sea.epic", "water.common"]
+    "beatsDefinitionIds": [
+      "cloud.common",
+      "sea.epic",
+      "water.common",
+      "magnet.rare",
+      "gun.rare",
+      "rocket.epic",
+      "plant.common",
+      "scissors.rare",
+      "sponge.common"
+    ]
   },
   {
     "id": "plant.common",
     "name": "Plant",
     "rarity": "common",
-    "masterPoolCopies": 9,
+    "masterPoolCopies": 7,
     "iconPath": "/cards/plant.common.png",
     "description": "A provisional growth.",
     "tags": ["living-creature", "plant"],
-    "beatsDefinitionIds": ["dirt.common", "water.common"]
+    "beatsDefinitionIds": [
+      "dirt.common",
+      "water.common",
+      "rock.common",
+      "paper.common",
+      "sponge.common",
+      "magnet.rare"
+    ]
+  },
+  {
+    "id": "rock.common",
+    "name": "Rock",
+    "rarity": "common",
+    "masterPoolCopies": 12,
+    "iconPath": "/cards/rock.common.png",
+    "description": "A solid smash.",
+    "tags": ["earth"],
+    "beatsDefinitionIds": [
+      "scissors.rare",
+      "mouse.common",
+      "cat.common",
+      "dog.common",
+      "gun.rare",
+      "rocket.epic",
+      "magnet.rare",
+      "fire.common",
+      "fire.rare",
+      "fire.epic",
+      "fire.legendary"
+    ]
+  },
+  {
+    "id": "paper.common",
+    "name": "Paper",
+    "rarity": "common",
+    "masterPoolCopies": 12,
+    "iconPath": "/cards/paper.common.png",
+    "description": "A broad cover.",
+    "tags": ["material"],
+    "beatsDefinitionIds": ["rock.common", "sun.rare", "cloud.common", "dirt.common", "gun.rare"]
+  },
+  {
+    "id": "scissors.rare",
+    "name": "Scissors",
+    "rarity": "rare",
+    "masterPoolCopies": 10,
+    "iconPath": "/cards/scissors.rare.png",
+    "description": "A precise cut.",
+    "tags": ["weapon"],
+    "beatsDefinitionIds": [
+      "paper.common",
+      "plant.common",
+      "sponge.common",
+      "mouse.common",
+      "cloud.common"
+    ]
+  },
+  {
+    "id": "sponge.common",
+    "name": "Sponge",
+    "rarity": "common",
+    "masterPoolCopies": 10,
+    "iconPath": "/cards/sponge.common.png",
+    "description": "An absorbent collector.",
+    "tags": ["material"],
+    "beatsDefinitionIds": [
+      "water.common",
+      "water.rare",
+      "water.epic",
+      "water.legendary",
+      "sea.epic",
+      "cloud.common",
+      "dirt.common"
+    ]
+  },
+  {
+    "id": "magnet.rare",
+    "name": "Magnet",
+    "rarity": "rare",
+    "masterPoolCopies": 8,
+    "iconPath": "/cards/magnet.rare.png",
+    "description": "A powerful diversion.",
+    "tags": ["metal"],
+    "beatsDefinitionIds": [
+      "gun.rare",
+      "rocket.epic",
+      "lightning.rare",
+      "scissors.rare",
+      "rust.common"
+    ]
   },
   {
     "id": "tornado.legendary",
@@ -244,6 +421,11 @@
       "ice.common",
       "lightning.rare",
       "plant.common",
+      "rock.common",
+      "paper.common",
+      "scissors.rare",
+      "sponge.common",
+      "magnet.rare",
       "tornado.legendary"
     ]
   },
@@ -277,6 +459,11 @@
       "ice.common",
       "lightning.rare",
       "plant.common",
+      "rock.common",
+      "paper.common",
+      "scissors.rare",
+      "sponge.common",
+      "magnet.rare",
       "tornado.legendary"
     ]
   }

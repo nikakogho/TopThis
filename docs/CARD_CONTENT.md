@@ -1,82 +1,65 @@
 # Card content
 
-Runtime card definitions are data-driven. Every resolved definition requires
-`id`, `name`, `rarity`, `masterPoolCopies`, `iconPath`, `description`, `tags` and
-an explicit `beatsDefinitionIds` array. Rarity is presentation and
-categorization only; it never creates a legal play.
+The runtime catalog is data-driven. Every resolved card has its identity,
+presentation metadata, copy count and explicit `beatsDefinitionIds`; rarity and
+tags never create a legal play.
 
-## Catalog and copy counts
+## Catalog and copies
 
-| Definition ID         | Rarity    |  Copies | Status      |
-| --------------------- | --------- | ------: | ----------- |
-| water.common          | common    |      30 | required    |
-| water.rare            | rare      |      25 | required    |
-| water.epic            | epic      |      18 | required    |
-| water.legendary       | legendary |       9 | required    |
-| fire.common           | common    |      30 | required    |
-| fire.rare             | rare      |      25 | required    |
-| fire.epic             | epic      |      18 | required    |
-| fire.legendary        | legendary |       9 | required    |
-| gun.rare              | rare      |      18 | required    |
-| rust.common           | common    |      24 | required    |
-| dirt.common           | common    |      28 | required    |
-| mouse.common          | common    |      22 | required    |
-| cat.common            | common    |      22 | required    |
-| dog.common            | common    |      22 | required    |
-| cloud.common          | common    |      22 | required    |
-| sun.rare              | rare      |      18 | required    |
-| rocket.epic           | epic      |      12 | required    |
-| sea.epic              | epic      |      12 | required    |
-| ice.common            | common    |      12 | provisional |
-| lightning.rare        | rare      |      10 | provisional |
-| plant.common          | common    |       9 | provisional |
-| tornado.legendary     | legendary |       4 | required    |
-| meteor.legendary      | legendary |       1 | required    |
-| **Master-pool total** |           | **400** |             |
+The 28 definitions total exactly 400 master-pool instances. The new cards are
+Rock Common (12), Paper Common (12), Scissors Rare (10), Sponge Common (10) and
+Magnet Rare (8). Their 52 copies come from Water Common -6, Fire Common -6,
+Water Rare -4, Fire Rare -4, Rust -4, Dirt -6, Mouse/Cat/Dog -4 each, Cloud -4,
+Sun -2, Gun -2 and Plant -2.
 
-Water and Fire relationships are explicit by tier in the resolved artifact.
-Equal tiers mutually beat each other, but no generic rarity operation exists.
+| ID                                                                       |                Copies |
+| ------------------------------------------------------------------------ | --------------------: |
+| water.common / water.rare / water.epic / water.legendary                 |      24 / 21 / 18 / 9 |
+| fire.common / fire.rare / fire.epic / fire.legendary                     |      24 / 21 / 18 / 9 |
+| gun.rare / rust.common / dirt.common                                     |          16 / 20 / 22 |
+| mouse.common / cat.common / dog.common                                   |          18 / 18 / 18 |
+| cloud.common / sun.rare / rocket.epic / sea.epic                         |     18 / 16 / 12 / 12 |
+| ice.common / lightning.rare / plant.common                               |           12 / 10 / 7 |
+| rock.common / paper.common / scissors.rare / sponge.common / magnet.rare | 12 / 12 / 10 / 10 / 8 |
+| tornado.legendary / meteor.legendary                                     |                 4 / 1 |
 
-Mouse, Cat and Dog carry the `animal` and `living-creature` tags. Provisional
-Plant is also a `living-creature`. Authored Fire definitions target `animal`,
-and Gun targets `living-creature`; content resolution expands those tags to
-explicit IDs. All other required named relationships are direct authored IDs.
+## Counter graph
 
-The provisional relationships are:
+Rock smashes Scissors, animals, weapons, Magnet and every Fire. Paper covers
+Rock and obstructs Sun, Cloud, Dirt and Gun. Scissors cuts Paper, Plant, Sponge,
+Mouse and Cloud. Sponge absorbs every Water tier, Sea and Cloud, and collects
+Dirt. Magnet diverts Gun, Rocket, Lightning, Scissors and Rust.
 
-- Ice beats `fire.common` and `fire.rare`.
-- Lightning beats `cloud.common`, `sea.epic` and `water.common`.
-- Plant beats `dirt.common` and `water.common`.
-- Gun beating Plant is the required consequence of Plant's provisional
-  `living-creature` classification.
+The reciprocal answers are explicit: Water erodes Rock and soaks Paper; Fire
+burns Paper and Plant, dries Sponge and melts Ice; Rust ruins Magnet and
+Scissors; Dirt clogs Sponge, buries Magnet and soils Paper. Mouse, Cat and Dog
+damage Paper and Sponge while retaining their individual existing prey (Cat also
+catches Mouse; Dog catches Mouse and its two lower Water tiers). Cloud smothers
+every Fire and blocks Rocket; Sun disperses Cloud, melts Ice and dries Sponge;
+Rocket blasts Rock, Paper, Plant, Sponge and Ice; Sea overwhelms every Fire,
+Rock, Dirt, Plant, Magnet and Gun. Ice freezes every Water tier, Sea, Plant and
+Sponge; Lightning overloads Magnet, Gun, Rocket, Plant, Scissors and Sponge;
+Plant cracks Rock and grows through Paper, Sponge and Magnet.
 
-Tornado has four instances and explicitly beats every definition except Meteor,
-including Tornado. Meteor has one instance, explicitly beats every other
-definition and is absent from every other beating list.
+Tornado explicitly beats every definition except Meteor, including all five new
+definitions and Tornado itself. Meteor explicitly beats every other definition,
+including all five new definitions. No other definition beats Meteor.
 
-## Authoring and resolution
+## Authoring and validation
 
-`content/cards.authored.json` is the editable source. It may combine direct
-`beatsDefinitionIds` with authoring-only `beatsTags`. Resolution finds every
-definition carrying a referenced tag, merges those IDs with direct edges,
-deduplicates and validates them, then writes the runtime-only
-`content/cards.json` artifact.
+`content/cards.authored.json` is editable source and may use authoring-only
+`beatsTags`; `content/cards.json` is the committed runtime artifact with every
+edge resolved to an ID. Fire's animal and Gun's living-creature relationships
+are expanded during resolution; runtime never interprets tags.
 
-Tests independently resolve the authored catalog, normalize relationship order
-and deep-compare it with the committed runtime artifact. Validation also checks
-required fields, rarity values, unique IDs, positive copies, exactly 400 pool
-instances, four Tornados, one Meteor, icon paths, resolved references, duplicate
-edges and the complete Tornado/Meteor invariants.
+Tests compare a fresh resolution with the runtime artifact and validate totals,
+references, duplicate edges, all new/reciprocal families and Tornado/Meteor
+invariants. `pnpm.cmd balance:check` runs a real-engine, always-first-legal
+simulation over 40 seeds in each player count and enforces pile thresholds.
+Use `pnpm.cmd balance:check -- --seeds=200` for release evidence.
 
 ## Artwork replacement
 
-Final artwork belongs at
-`apps/web/public/cards/<definition-id>.png`, for example
-`apps/web/public/cards/water.common.png`. Source artwork is a square 1024x1024
-PNG. A replacement keeps the exact definition-based filename, dimensions and
-format; content validation and a visual check run before merging.
-
-Missing or invalid artwork never blocks startup or play. The client renders a
-deterministic SVG/CSS fallback derived from the definition ID, containing the
-card name, rarity and an abstract symbol. The image exposes accessible alt text
-with the card name.
+Artwork belongs at `apps/web/public/cards/<definition-id>.png` as a square
+1024x1024 PNG. Missing artwork falls back to the deterministic accessible card
+presentation.

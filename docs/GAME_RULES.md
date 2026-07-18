@@ -17,6 +17,14 @@ The 200 unselected instances never enter the match. Meteor, Tornado or entire
 families may therefore be absent; selected special cards may also remain
 undrawn.
 
+## Counter families
+
+Rock, Paper, Scissors, Sponge and Magnet add dense natural counters. Their
+relationships with Water, Fire, animals, weather, machines and Plant are all
+explicit resolved catalog edges; rarity and tags still never create legality.
+Tornado beats every definition except Meteor, while Meteor beats every other
+definition.
+
 ## Turns and round completion
 
 On a turn, a player either plays one legal card from their private hand or skips

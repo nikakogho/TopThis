@@ -9,6 +9,7 @@
     "test": "pnpm -r build && pnpm -r test",
     "test:unit": "pnpm -r build && pnpm -r test",
     "test:e2e": "playwright test",
+    "balance:check": "pnpm --filter @topthis/game-engine build && node scripts/balance-check.mjs",
     "typecheck": "pnpm -r build && pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",

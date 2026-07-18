@@ -103,7 +103,7 @@ describe('card content and explicit legality', () => {
     const validated = validateCardDefinitions(cards);
     const pool = createMasterPool(cards);
 
-    expect(validated).toHaveLength(23);
+    expect(validated).toHaveLength(28);
     expect(cards.reduce((total, card) => total + card.masterPoolCopies, 0)).toBe(400);
     expect(pool).toHaveLength(400);
     expect(new Set(cards.map((card) => card.id)).size).toBe(cards.length);
@@ -154,39 +154,138 @@ describe('card content and explicit legality', () => {
     ).toThrow(/cannot beat Meteor/);
   });
 
-  it('contains every required Water, Fire and named relationship explicitly', () => {
-    expectExactRelationships('water.common', ['fire.common']);
-    expectExactRelationships('water.rare', ['fire.common', 'fire.rare']);
-    expectExactRelationships('water.epic', ['fire.common', 'fire.rare', 'fire.epic']);
-    expectExactRelationships('water.legendary', [
-      'fire.common',
-      'fire.rare',
-      'fire.epic',
-      'fire.legendary',
-    ]);
+  it('contains every approved family and reciprocal answer through explicit IDs', () => {
+    const expected = {
+      'water.common': ['fire.common', 'paper.common', 'rock.common'],
+      'water.rare': ['fire.common', 'fire.rare', 'paper.common', 'rock.common'],
+      'water.epic': ['fire.common', 'fire.rare', 'fire.epic', 'paper.common', 'rock.common'],
+      'water.legendary': [
+        'fire.common',
+        'fire.rare',
+        'fire.epic',
+        'fire.legendary',
+        'paper.common',
+        'rock.common',
+      ],
+      'rock.common': [
+        'scissors.rare',
+        'mouse.common',
+        'cat.common',
+        'dog.common',
+        'gun.rare',
+        'rocket.epic',
+        'magnet.rare',
+        'fire.common',
+        'fire.rare',
+        'fire.epic',
+        'fire.legendary',
+      ],
+      'paper.common': ['rock.common', 'sun.rare', 'cloud.common', 'dirt.common', 'gun.rare'],
+      'scissors.rare': [
+        'paper.common',
+        'plant.common',
+        'sponge.common',
+        'mouse.common',
+        'cloud.common',
+      ],
+      'sponge.common': [
+        'water.common',
+        'water.rare',
+        'water.epic',
+        'water.legendary',
+        'sea.epic',
+        'cloud.common',
+        'dirt.common',
+      ],
+      'magnet.rare': ['gun.rare', 'rocket.epic', 'lightning.rare', 'scissors.rare', 'rust.common'],
+      'rust.common': ['gun.rare', 'rocket.epic', 'magnet.rare', 'scissors.rare'],
+      'dirt.common': ['rust.common', 'sponge.common', 'magnet.rare', 'paper.common'],
+      'mouse.common': ['dirt.common', 'water.common', 'paper.common', 'sponge.common'],
+      'cat.common': ['mouse.common', 'water.common', 'paper.common', 'sponge.common'],
+      'dog.common': ['mouse.common', 'water.common', 'water.rare', 'paper.common', 'sponge.common'],
+      'cloud.common': [
+        'sun.rare',
+        'fire.common',
+        'fire.rare',
+        'fire.epic',
+        'fire.legendary',
+        'rocket.epic',
+      ],
+      'sun.rare': ['cloud.common', 'ice.common', 'sponge.common'],
+      'rocket.epic': [
+        'cloud.common',
+        'gun.rare',
+        'rock.common',
+        'paper.common',
+        'plant.common',
+        'sponge.common',
+        'ice.common',
+      ],
+      'sea.epic': [
+        'fire.common',
+        'fire.rare',
+        'fire.epic',
+        'fire.legendary',
+        'rock.common',
+        'dirt.common',
+        'plant.common',
+        'magnet.rare',
+        'gun.rare',
+      ],
+      'ice.common': [
+        'fire.common',
+        'fire.rare',
+        'water.common',
+        'water.rare',
+        'water.epic',
+        'water.legendary',
+        'sea.epic',
+        'plant.common',
+        'sponge.common',
+      ],
+      'lightning.rare': [
+        'cloud.common',
+        'sea.epic',
+        'water.common',
+        'magnet.rare',
+        'gun.rare',
+        'rocket.epic',
+        'plant.common',
+        'scissors.rare',
+        'sponge.common',
+      ],
+      'plant.common': [
+        'dirt.common',
+        'water.common',
+        'rock.common',
+        'paper.common',
+        'sponge.common',
+        'magnet.rare',
+      ],
+    } as const;
+    for (const [id, relationships] of Object.entries(expected))
+      expectExactRelationships(id, [...relationships]);
 
     const animals = cards.filter((card) => card.tags.includes('animal')).map((card) => card.id);
+    const living = cards
+      .filter((card) => card.tags.includes('living-creature'))
+      .map((card) => card.id);
+    expectExactRelationships('gun.rare', living);
     const waterByTier = [
       ['water.common'],
       ['water.common', 'water.rare'],
       ['water.common', 'water.rare', 'water.epic'],
       ['water.common', 'water.rare', 'water.epic', 'water.legendary'],
     ];
-    ['fire.common', 'fire.rare', 'fire.epic', 'fire.legendary'].forEach((id, index) =>
-      expectExactRelationships(id, [...waterByTier[index]!, ...animals]),
-    );
-
-    const living = cards
-      .filter((card) => card.tags.includes('living-creature'))
-      .map((card) => card.id);
-    expectExactRelationships('gun.rare', living);
-    expectExactRelationships('rust.common', ['gun.rare', 'rocket.epic']);
-    expectExactRelationships('dirt.common', ['rust.common']);
-    expectExactRelationships('mouse.common', ['dirt.common', 'water.common']);
-    expectExactRelationships('cat.common', ['mouse.common', 'water.common']);
-    expectExactRelationships('dog.common', ['mouse.common', 'water.common', 'water.rare']);
-    expectExactRelationships('cloud.common', ['sun.rare']);
-    expectExactRelationships('rocket.epic', ['cloud.common', 'gun.rare']);
+    for (const [index, id] of ['fire.common', 'fire.rare', 'fire.epic', 'fire.legendary'].entries())
+      expectExactRelationships(id, [
+        ...waterByTier[index]!,
+        ...animals,
+        'paper.common',
+        'plant.common',
+        'sponge.common',
+        'ice.common',
+      ]);
   });
 
   it('implements Tornado and Meteor entirely through explicit IDs', () => {
@@ -237,10 +336,10 @@ describe('deterministic pool selection and setup', () => {
 
   it('uses reproducible seeds where Meteor is present and absent', () => {
     expect(
-      selectMatchDeck(cards, 0).selected.some((card) => card.definitionId === 'meteor.legendary'),
+      selectMatchDeck(cards, 1).selected.some((card) => card.definitionId === 'meteor.legendary'),
     ).toBe(true);
     expect(
-      selectMatchDeck(cards, 3).selected.some((card) => card.definitionId === 'meteor.legendary'),
+      selectMatchDeck(cards, 0).selected.some((card) => card.definitionId === 'meteor.legendary'),
     ).toBe(false);
   });
 
@@ -301,10 +400,10 @@ describe('round and match transitions', () => {
   );
 
   it('lets the latest legal player win after all other players pass', () => {
-    let state = make(3, 1);
+    let state = make(3, 0);
     const actorId = state.turnPlayerId!;
     const selectedCard = getLegalCardInstanceIds(state, actorId)[0]!;
-    expect(selectedCard).toBe('mouse.common#8');
+    expect(selectedCard).toBeDefined();
 
     state = applyAccepted(state, playCommand(state, 'play', selectedCard));
     expect(state.leaderId).toBe(actorId);

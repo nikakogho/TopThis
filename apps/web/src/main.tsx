@@ -104,6 +104,9 @@ function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>();
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState('');
+  const [soundOn, setSoundOn] = useState(true);
+  const audioRef = useRef<AudioContext | undefined>(undefined);
+  const lastRoundRef = useRef<string | undefined>(undefined);
   const rulesTriggerRef = useRef<HTMLButtonElement>(null);
   const rulesTitleRef = useRef<HTMLHeadingElement>(null);
   const previousScreenRef = useRef<Screen | undefined>(undefined);
@@ -159,6 +162,43 @@ function App() {
       socket.off('connect_error', onConnectError);
     };
   }, []);
+  const unlockAudio = () => {
+    try {
+      const Ctx =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      audioRef.current ??= new Ctx();
+      if (audioRef.current.state === 'suspended') void audioRef.current.resume();
+    } catch {
+      // Audio is optional; gameplay must continue when Web Audio is unavailable.
+    }
+  };
+  useEffect(() => {
+    const result = view?.roundResult;
+    if (
+      !result ||
+      view?.phase === 'playing' ||
+      lastRoundRef.current === `${view.matchId}:${view.stateVersion}`
+    )
+      return;
+    lastRoundRef.current = `${view.matchId}:${view.stateVersion}`;
+    if (!soundOn) return;
+    try {
+      const ctx = audioRef.current;
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 520;
+      gain.gain.setValueAtTime(0.04, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+    } catch {
+      // Audio is decorative; unsupported APIs and autoplay failures are harmless.
+    }
+  }, [soundOn, view?.matchId, view?.phase, view?.roundResult, view?.stateVersion]);
 
   useEffect(() => {
     const token = localStorage.getItem('topthis.guestToken');
@@ -343,6 +383,7 @@ function App() {
   };
 
   const command = (type: 'play' | 'skip') => {
+    unlockAudio();
     if (!view?.turnId || (type === 'play' && !selected)) return;
     const payload = {
       commandId: crypto.randomUUID(),
@@ -802,6 +843,15 @@ function App() {
   const leader = view.players.find((player) => player.id === view.leaderId);
   const current = view.players.find((player) => player.id === view.currentPlayerId);
   const roundWinner = view.players.find((player) => player.id === view.roundResult?.winnerId);
+  const localPlayer = view.players.find((player) => player.id === view.yourPlayerId);
+  const opponents = view.players.filter((player) => player.id !== view.yourPlayerId);
+  const winnerSeat =
+    view.roundResult?.winnerId === view.yourPlayerId
+      ? 'local'
+      : `opponent-${Math.max(
+          1,
+          opponents.findIndex((player) => player.id === view.roundResult?.winnerId) + 1,
+        )}`;
   const seconds = view.turnEndsAt ? Math.max(0, Math.ceil((view.turnEndsAt - now) / 1000)) : 0;
   const status =
     view.phase === 'playing'
@@ -845,17 +895,25 @@ function App() {
       <div className="sr-only" aria-live="polite">
         {status}. {error}
       </div>
-      <section className="opponents" aria-label="Opponents">
-        {view.players
-          .filter((player) => player.id !== view.yourPlayerId)
-          .map((player) => (
+      <section className={`tabletop player-count-${view.players.length}`} aria-label="Game table">
+        <section className="opponents seats" aria-label="Opponents">
+          {opponents.map((player, index) => (
             <article
-              className={player.id === view.currentPlayerId ? 'active-player' : ''}
+              className={`seat opponent-seat opponent-${index + 1} ${player.id === view.currentPlayerId ? 'active-player' : ''}`}
+              data-seat-position={`opponent-${index + 1}`}
               key={player.id}
             >
+              <span
+                className="score-badge"
+                aria-label={`${player.capturedCardCount} captured cards`}
+              >
+                {player.capturedCardCount}
+              </span>
+              <span className="avatar" aria-hidden="true">
+                {player.displayName.slice(0, 1).toUpperCase()}
+              </span>
               <strong>{player.displayName}</strong>
               <span>{player.handCount} cards in hand</span>
-              <span>{player.capturedCardCount} captured</span>
               {networked && (
                 <span>
                   {(player as PrivateMatchView['players'][number]).abandoned
@@ -867,37 +925,84 @@ function App() {
               )}
             </article>
           ))}
-      </section>
-      <section className="arena" aria-label="Table challenge">
-        <div className="round-status">
-          <strong>{status}</strong>
-          <span>Leader: {leader?.displayName ?? 'Unknown'}</span>
-          <span data-testid="turn-timer">
-            {view.phase === 'playing' ? `${seconds}s remaining` : 'Turn ended'}
-          </span>
-        </div>
-        <div className="challenge">
-          <p className="challenge-label">TOP THIS</p>
-          {view.challengeCard ? (
-            <div className={`card challenge-card ${view.challengeCard.rarity}`}>
-              <CardFace card={view.challengeCard} />
+        </section>
+        <section className="arena" aria-label="Table challenge">
+          <div className="round-status">
+            <strong>{status}</strong>
+            <span>Leader: {leader?.displayName ?? 'Unknown'}</span>
+            <span data-testid="turn-timer">
+              {view.phase === 'playing' ? `${seconds}s remaining` : 'Turn ended'}
+            </span>
+          </div>
+          <div className="challenge">
+            <div
+              className="pile-stack"
+              data-layer-count={Math.min(view.pileCount, 10)}
+              aria-label={`${view.pileCount} cards in pile`}
+            >
+              {Array.from({ length: Math.min(view.pileCount, 10) }, (_, index) => (
+                <span
+                  key={index}
+                  style={{ transform: `translate(${index * 2}px, ${-index * 2}px)` }}
+                />
+              ))}
             </div>
-          ) : (
-            <span>Waiting for a challenge</span>
-          )}
-        </div>
-        <div className="pile-meter">
-          <strong>{view.pileCount}</strong>
-          <span>cards in pile</span>
-          <small>{view.deckCount} left in deck</small>
-        </div>
-      </section>
-      <section className="your-score" aria-label="Your score">
-        <span>You</span>
-        <strong>
-          {view.players.find((player) => player.id === view.yourPlayerId)?.capturedCardCount ?? 0}{' '}
-          captured
-        </strong>
+            <p className="challenge-label">TOP THIS</p>
+            {view.challengeCard ? (
+              <div
+                key={view.challengeCard.instanceId}
+                className={`card challenge-card ${view.challengeCard.rarity}`}
+              >
+                <CardFace card={view.challengeCard} />
+              </div>
+            ) : (
+              <span>Waiting for a challenge</span>
+            )}
+          </div>
+          <div className="pile-meter">
+            <strong>{view.pileCount}</strong>
+            <span>cards in pile</span>
+            <small>{view.deckCount} left in deck</small>
+            <button
+              className="sound-toggle secondary"
+              aria-pressed={soundOn}
+              onClick={() => {
+                unlockAudio();
+                setSoundOn((value) => !value);
+              }}
+            >
+              {soundOn ? 'Sound on' : 'Sound off'}
+            </button>
+          </div>
+        </section>
+        <article
+          className={`seat local-seat ${view.yourPlayerId === view.currentPlayerId ? 'active-player' : ''}`}
+          data-seat-position="local"
+          aria-label="Your score"
+        >
+          <span
+            className="score-badge"
+            aria-label={`${localPlayer?.capturedCardCount ?? 0} captured cards`}
+          >
+            {localPlayer?.capturedCardCount ?? 0}
+          </span>
+          <span className="avatar" aria-hidden="true">
+            {(localPlayer?.displayName ?? 'Y').slice(0, 1).toUpperCase()}
+          </span>
+          <strong>{localPlayer?.displayName ?? 'You'} (You)</strong>
+          <span>{localPlayer?.handCount ?? view.hand.length} cards in hand</span>
+        </article>
+        {view.phase === 'round_result' && view.roundResult && (
+          <div
+            className={`collecting-pile collect-to-${winnerSeat}`}
+            data-testid="collecting-pile"
+            aria-hidden="true"
+          >
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
       </section>
       <section className="hand" aria-label="Your hand">
         {view.hand.map((card) => {

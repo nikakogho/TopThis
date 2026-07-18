@@ -129,7 +129,7 @@ test('two guests match, complete through the rendered table, and retain leaderbo
 
     await one.getByRole('button', { name: 'Return home' }).click();
     await one.getByRole('button', { name: 'Leaderboard' }).click();
-    const ratings = one.locator('table tbody tr');
+    const ratings = one.locator('table tbody tr').filter({ hasText: /Match (Ada|Bea)/ });
     await expect(ratings).toHaveCount(2);
     const parsed = await ratings.evaluateAll((rows) =>
       rows.map((row) => {
@@ -147,7 +147,9 @@ test('two guests match, complete through the rendered table, and retain leaderbo
     await expect(one.getByText('MATCH RESULT')).toBeVisible();
     await one.getByRole('button', { name: 'Return home' }).click();
     await one.getByRole('button', { name: 'Leaderboard' }).click();
-    await expect(one.locator('table tbody tr')).toHaveCount(2);
+    await expect(one.locator('table tbody tr').filter({ hasText: /Match (Ada|Bea)/ })).toHaveCount(
+      2,
+    );
   } finally {
     if (
       testInfo.status !== testInfo.expectedStatus ||

@@ -186,6 +186,80 @@ describe('TopThis practice UI', () => {
     expect(screen.getByLabelText('Bot opponents')).toHaveValue('1');
   });
 
+  it('renders seated avatars, score badges, and layered pile', () => {
+    openMatch({ ...playingView, pileCount: 5 });
+    const table = screen.getByRole('region', { name: 'Game table' });
+    const seats = screen.getByRole('region', { name: 'Opponents' });
+    expect(table.contains(seats)).toBe(true);
+    expect(seats.querySelectorAll('.avatar')).toHaveLength(1);
+    expect(seats.querySelectorAll('.score-badge')).toHaveLength(1);
+    expect(screen.getByRole('article', { name: 'Your score' })).toHaveAttribute(
+      'data-seat-position',
+      'local',
+    );
+    expect(document.querySelectorAll('.pile-stack span')).toHaveLength(5);
+  });
+
+  it('animates a real pile toward the winner and toggles sound', () => {
+    openMatch();
+    const result = {
+      ...playingView,
+      phase: 'round_result' as const,
+      stateVersion: 9,
+      roundResult: { winnerId: 'bot1', pileCount: 3, capturedCardCount: 3 },
+    };
+    act(() => socketMock.handlers.get('practice:state')?.forEach((handler) => handler(result)));
+    expect(screen.getByTestId('collecting-pile')).toHaveClass('collect-to-opponent-1');
+    expect(screen.getByTestId('collecting-pile').querySelectorAll('span')).toHaveLength(3);
+    const toggle = screen.getByRole('button', { name: 'Sound on' });
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Sound off' })).toBeTruthy();
+  });
+
+  it('plays one quiet cue for each authoritative round result', async () => {
+    const start = vi.fn();
+    const stop = vi.fn();
+    const createOscillator = vi.fn();
+    const gainNode = {
+      connect: vi.fn(),
+      gain: {
+        exponentialRampToValueAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+      },
+    };
+    createOscillator.mockReturnValue({
+      connect: vi.fn(() => gainNode),
+      frequency: { value: 0 },
+      start,
+      stop,
+    });
+    class FakeAudioContext {
+      currentTime = 1;
+      destination = {};
+      state = 'suspended';
+      createGain = vi.fn(() => gainNode);
+      createOscillator = createOscillator;
+      resume = vi.fn();
+    }
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    openMatch();
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    const result = {
+      ...playingView,
+      phase: 'round_result' as const,
+      stateVersion: 9,
+      roundResult: { winnerId: 'bot1', pileCount: 3, capturedCardCount: 3 },
+    };
+    act(() => socketMock.handlers.get('practice:state')?.forEach((handler) => handler(result)));
+    await waitFor(() => expect(createOscillator).toHaveBeenCalledTimes(1));
+    act(() =>
+      socketMock.handlers.get('practice:state')?.forEach((handler) => handler({ ...result })),
+    );
+    expect(createOscillator).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledWith(1.18);
+  });
+
   it('renders recipient-safe opponents and explicit legal states', () => {
     openMatch();
     expect(screen.getByRole('region', { name: 'Opponents' })).toHaveTextContent('10 cards in hand');

@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Complete — local MVP release gate passed
-- Last completed phase: Phase 5 — product and operational readiness
+- Active phase: Complete — Enhancement 1 release gate passed
+- Last completed phase: Enhancement 1 — seated table and longer interactive rounds
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -734,3 +734,160 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 - Identity is anonymous and device-local rather than account based. Supplying
   original 1024x1024 card artwork remains optional; the complete accessible
   deterministic fallback is the shipped presentation until it is replaced.
+
+## Enhancement 1 delegation ledger
+
+### SOL DECISIONS
+
+- Preserve the deterministic engine rules, 400-card master pool, seeded
+  200-card match deck, explicit-ID legality and server authority. Longer rounds
+  come from a denser, still data-driven matchup graph and redistributed copy
+  counts, never a rarity comparison or a client-only rule.
+- The measured baseline uses an always-play-first-legal deterministic policy
+  over 200 seeds for each player count. Across 40,854 rounds it averages 2.56
+  cards overall (two-player 1.88), with only 14.2% reaching five cards. This is
+  the regression baseline the enhancement must materially beat.
+- Add five intuitive definitions: Rock Common (12 copies), Paper Common (12),
+  Scissors Rare (10), Sponge Common (10) and Magnet Rare (8). Redistribute their
+  52 copies from Water Common -6, Fire Common -6, Water Rare -4, Fire Rare -4,
+  Rust -4, Dirt -6, Mouse/Cat/Dog -4 each, Cloud -4, Sun -2, Gun -2 and Plant
+  -2, preserving exactly 400 master-pool instances.
+- Use the approved natural counter graph: Rock smashes Scissors, animals,
+  weapons, magnets and Fire; Paper covers Rock and obstructs Sun, Cloud, Dirt
+  and Gun; Scissors cuts Paper, Plant, Sponge, Mouse and Cloud; Sponge absorbs
+  Water/Sea/Cloud and collects Dirt; Magnet diverts Gun, Rocket, Lightning,
+  Scissors and Rust. Existing families gain reciprocal natural answers: Water
+  erodes Rock/soaks Paper; Fire burns Paper/Plant and dries Sponge/melts Ice;
+  Rust ruins Magnet/Scissors; Dirt clogs Sponge/buries Magnet/soils Paper;
+  animals damage Paper/Sponge with the documented Cat/Dog variations; Cloud
+  smothers Fire and blocks Rocket; Sun disperses Cloud/melts Ice/dries Sponge;
+  Rocket blasts Rock/Paper/Plant/Sponge/Ice; Sea overwhelms Fire/Rock/Dirt/
+  Plant/Magnet/Gun; Ice freezes Water/Sea/Plant/Sponge; Lightning overloads
+  Magnet/Gun/Rocket/Plant/Scissors/Sponge; Plant cracks Rock and grows through
+  Paper/Sponge/Magnet. Tornado and Meteor extend their existing invariants to
+  every new definition.
+- The deterministic balance check must retain exactly 400 copies and pass, over
+  at least 40 seeds per 2/3/4-player mode: overall mean pile >=5.0, overall
+  median >=4, at least 40% of rounds reaching five cards, and two-player mean
+  > =3.4. A final 200-seed run records stronger release evidence.
+- Present the game as an oval felt table with the local player at the bottom and
+  one-to-three opponents arranged around the other seats. Every seat has an
+  avatar/name and captured-card score badge physically above the avatar.
+- The center pile is a visible layered stack whose thickness grows with
+  `pileCount`; a new challenge animates onto it. During `round_result`, a
+  decorative stack travels from the center to the authoritative winner seat.
+  Recipient-safe contracts need no extra card identities because only stack
+  size and the public top card are required.
+- At desktop widths the local hand is a five-column by two-row grid so all ten
+  cards are present together with no horizontal scroll. Narrow layouts remain
+  contained and use additional rows rather than horizontal hand scrolling.
+- Generate a quiet, short Web Audio cue locally when a round result first
+  arrives. Unlock audio from Play/Skip interaction, expose an accessible sound
+  on/off control, avoid external/copyrighted assets, and never let audio failure
+  affect gameplay. Reduced-motion preference disables movement animations.
+
+### TERRA TASKS
+
+- Own `content/**`, `packages/game-engine/**`, a reproducible root balance-check
+  script and narrowly necessary root package script/docs for Enhancement 1.
+  Implement exactly the five definitions, copy redistribution and approved
+  relationship families above in authored and resolved artifacts.
+- Add deterministic catalog tests for every new relationship, all reciprocal
+  additions, special-card invariants, copy totals and authored/resolved parity.
+  Add a reproducible balance analyzer using the real engine and an always-play-
+  first-legal policy; it must enforce the decided thresholds and report per
+  player-count mean/median/p75/p90 and five/eight-card rates.
+- Do not change command/round/scoring semantics, apps, shared public contracts,
+  server behavior, UI, CI or this ledger. Do not introduce generic rarity/tag
+  legality at runtime or spawn subagents. Preserve concurrent web changes.
+- Definition of done: the catalog stays valid and exact; all old/new named
+  rules pass; balance thresholds pass deterministically; engine replay and all
+  earlier tests remain green; content documentation explains every new card and
+  copy change.
+- Verification: filtered engine build/test/typecheck, root lint/format on owned
+  files, default balance check (>=40 seeds per player count) and a reported
+  200-seed release analysis.
+
+### LUNA TASKS
+
+- Own `apps/web/src/**`, focused `apps/web/e2e/**` and the practice-table
+  screenshot for Enhancement 1. Recompose the existing accessible table markup
+  and CSS into an oval seated-table layout without duplicating gameplay state or
+  changing network contracts.
+- Render all player seats with score badges above avatars, a center stacked pile
+  that grows from `pileCount`, play-in motion keyed by the challenge instance,
+  and result collection motion aimed at the winner seat. Keep status, deck,
+  leader, turn, privacy, connection and result information accessible.
+- Replace horizontal hand scrolling with a desktop five-column/two-row grid and
+  contained narrow grids. Preserve legal/illegal/selected cues, arrow/Enter/
+  Escape operation, visible focus, card confirmation and every existing mode.
+- Add a resilient quiet Web Audio round-win cue, user-interaction unlock and an
+  accessible sound toggle. Play at most once for an authoritative round result;
+  swallow unsupported/autoplay failures and keep tests deterministic.
+- Add focused React tests for seats/scores, pile layer growth, winner collection
+  target, two-row hand markup and single sound trigger. Extend Playwright to
+  prove ten cards occupy two rows without horizontal hand overflow and update
+  the reviewed screenshot. Do not edit engine/content/server/shared/root/docs,
+  spawn subagents or revert concurrent work.
+- Definition of done: a live 2/3/4-player state reads as people around a table;
+  scores sit above heads; the stack visibly grows and collects to the winner;
+  ten local cards appear together in two desktop rows; the cue/toggle works;
+  desktop/mobile remain contained and all web regressions pass.
+- Verification: web test/build/typecheck, scoped lint/format, focused and full
+  Playwright flows, and screenshot comparison at desktop plus 390x844.
+
+### TOO SMALL TO DELEGATE
+
+- Review the final graph against the approved semantic families and independently
+  rerun the 200-seed balance analysis; reject threshold gaming or runtime rule
+  changes.
+- Integrate seat geometry, animation targeting, audio lifecycle and existing
+  public-state semantics; apply only narrow cross-worker corrections after the
+  delegated passes.
+- Inspect live two-, three- and four-player tables, play/collection transitions,
+  the two-row ten-card hand and mobile containment in the built-in Browser; run
+  the complete gate, update records, commit and push the passing enhancement.
+
+## Enhancement 1 completion record
+
+### Delegated implementation
+
+- Terra owned the content and deterministic balance scope. The first pass added
+  five definitions, all approved explicit relationships, exact 400-copy parity,
+  Tornado/Meteor invariants, 25 passing engine tests, content documentation and
+  the reproducible `balance:check` release analyzer. No engine command, scoring
+  or round-transition semantics changed.
+- Luna owned the initial React/CSS pass. Two attempts delivered the component
+  behavior and 20 passing web tests but did not deliver the required Playwright
+  geometry/screenshot work; the first layout also left seats outside the table
+  and represented collection on the dialog rather than with a moving stack.
+  After the two incomplete attempts, Sol took over the narrowly remaining work
+  as permitted by the operating instructions.
+- Sol integrated all seats into one oval table, targeted a real decorative pile
+  stack to the authoritative winner seat, tightened the once-per-result Web
+  Audio lifecycle, added audio/seat/stack component coverage, and added desktop,
+  two-/three-/four-player and mobile Playwright geometry checks.
+
+### Release evidence
+
+- The independent 200-seed-per-player-count analyzer covered 18,889 rounds.
+  Overall pile length is mean 5.53, median 4, p75 8 and p90 12; 45.4% reach five
+  cards and 25.0% reach eight. Two-player mean is 3.64. Three-player mean is
+  6.53 and four-player mean is 9.35. Every locked threshold passes and all
+  metrics materially exceed the recorded baseline.
+- The practice Playwright flow proves all ten initial hand cards form exactly
+  two rows of five at desktop with no hand overflow. A second flow proves local
+  bottom seating, one-to-three opponent seating, visible score badges and table
+  containment for two-, three- and four-player states. At 390x844, all ten cards
+  remain in a contained multi-row hand and the document has no horizontal
+  overflow. The reviewed four-player screenshot is committed with the flow.
+- Built-in Browser review measured a 1108x544 desktop table, score badges above
+  all four avatars, a contained 5+5 hand and no horizontal document overflow.
+  Live play visibly grew the public pile from 2 to 9 cards before collection;
+  the winner score then advanced to 13. At 390x844, all seats remained within
+  the 343px table width, the hand used four contained rows and the browser error
+  log was empty.
+- Focused results: engine 25/25, web 20/20 and practice Playwright 3/3. The final
+  workspace build, all 72 tests, typecheck, lint and format checks pass. The full
+  default-parallel Playwright suite passes 6/6, including private reconnect,
+  matchmaking ratings, practice, responsive rules and all new table geometry.
