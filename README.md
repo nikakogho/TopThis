@@ -2,9 +2,12 @@
 
 Everything beats something. Top this. TopThis is a strategic multiplayer card game where every card has its own counters, and the last successful play takes the pile.
 
-## Phase 0
+## Current implementation
 
-Phase 0 provides a strict pnpm workspace, a branded blank React/Vite client, a dependency-free game-engine boundary, and a Fastify server scaffold. Gameplay is not implemented yet.
+TopThis currently provides the strict pnpm workspace, branded React/Vite shell,
+validated Fastify/Socket.IO boundary, complete resolved card catalog and pure
+seeded rules engine. The playable practice and multiplayer interfaces are built
+in the following phases.
 
 Requires Node 24 and pnpm 11. On Windows use `pnpm.cmd` if PowerShell blocks the shim.
 
