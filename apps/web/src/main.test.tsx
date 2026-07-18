@@ -130,6 +130,7 @@ const lobbyView: LobbyView = {
 };
 const privateMatchView: PrivateMatchView = {
   ...playingView,
+  matchMode: 'private',
   players: [
     {
       id: 'human1',
@@ -396,5 +397,170 @@ describe('TopThis private multiplayer UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
     expect(socketMock.emitted.some(({ event }) => event === 'match:skip')).toBe(true);
     expect(socketMock.emitted.some(({ event }) => event.startsWith('practice:'))).toBe(false);
+  });
+});
+
+describe('TopThis matchmaking and leaderboard UI', () => {
+  it('requires guest identity before queue entry and emits queue enter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        guest: ada,
+        token: 'queue-token-that-is-at-least-thirty-two-characters',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    socketMock.setAckFor('queue:enter', {
+      ok: true,
+      status: { queued: true, position: 1, playersNeeded: 1 },
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find Match' }));
+    expect(await screen.findByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Ada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('heading', { name: 'Finding your match' })).toBeTruthy();
+    expect(socketMock.emitted.some(({ event }) => event === 'queue:enter')).toBe(true);
+  });
+
+  it('renders queue status, cancels, and transitions to a matchmaking table', async () => {
+    localStorage.setItem('topthis.guestToken', 'queue-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ guest: ada }) }),
+    );
+    render(<App />);
+    await waitFor(() => expect(socketMock.api.connect).toHaveBeenCalled());
+    act(() =>
+      socketMock.handlers
+        .get('queue:status')
+        ?.forEach((handler) => handler({ queued: true, position: 1, playersNeeded: 1 })),
+    );
+    expect(screen.getByText(/Position 1/)).toBeTruthy();
+    socketMock.setAckFor('queue:leave', {
+      ok: true,
+      status: { queued: false, playersNeeded: 1 },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeTruthy();
+    act(() =>
+      socketMock.handlers
+        .get('match:state')
+        ?.forEach((handler) => handler({ ...privateMatchView, matchMode: 'matchmaking' })),
+    );
+    expect(screen.getByText('TOPTHIS / MATCHMAKING')).toBeTruthy();
+    act(() =>
+      socketMock.handlers
+        .get('queue:status')
+        ?.forEach((handler) => handler({ queued: false, playersNeeded: 1 })),
+    );
+    expect(screen.getByText('TOPTHIS / MATCHMAKING')).toBeTruthy();
+  });
+
+  it('loads leaderboard rows with bounded pagination', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          entries: [
+            {
+              rank: 1,
+              guestId: 'guest1',
+              displayName: 'Ada',
+              rating: 1010,
+              gamesPlayed: 1,
+              wins: 1,
+              losses: 0,
+              ties: 0,
+            },
+          ],
+        }),
+      }),
+    );
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
+    expect(await screen.findByText('Ada')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('loads the next leaderboard page and updates pagination controls', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          page: 1,
+          pageSize: 20,
+          total: 21,
+          entries: [
+            {
+              rank: 1,
+              guestId: 'guest1',
+              displayName: 'Ada',
+              rating: 1012,
+              gamesPlayed: 1,
+              wins: 1,
+              losses: 0,
+              ties: 0,
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          page: 2,
+          pageSize: 20,
+          total: 21,
+          entries: [
+            {
+              rank: 21,
+              guestId: 'guest2',
+              displayName: 'Grace',
+              rating: 988,
+              gamesPlayed: 1,
+              wins: 0,
+              losses: 1,
+              ties: 0,
+            },
+          ],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
+    expect(await screen.findByText('Ada')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Grace')).toBeTruthy();
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/leaderboard?page=2&pageSize=20');
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('renders an empty leaderboard', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ page: 1, pageSize: 20, total: 0, entries: [] }),
+      }),
+    );
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
+    expect(await screen.findByText('No completed matches yet.')).toBeTruthy();
+  });
+
+  it('announces a leaderboard request failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load leaderboard.');
   });
 });

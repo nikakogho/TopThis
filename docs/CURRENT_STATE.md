@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Phase 4 — matchmaking, ratings and leaderboard (planning)
-- Last completed phase: Phase 3 — private online multiplayer
+- Active phase: Phase 5 — product and operational polish (planning)
+- Last completed phase: Phase 4 — matchmaking, ratings and leaderboard
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -114,6 +114,21 @@ build/typecheck/lint/format and desktop/mobile Browser checks`
 flow delivered on the second pass; Sol replaced a fixed-attempt Socket.IO race
 after repeat verification exposed it | 3 Playwright tests, including complete
 three-player match, passed in two consecutive full runs`
+- `terra_worker | Phase 4 matchmaking, persistence, Elo and leaderboard server |
+passed after a focused integration-test follow-up | 4 shared tests and 20
+server tests cover authenticated FIFO pairing, cross-mode guards, privacy,
+cleanup, exact-once completion, repository reopen, 2/3/4-player Elo and HTTP
+pagination validation`
+- `luna_worker | Phase 4 queue and leaderboard React flow | functional screens
+retained, but two attempts omitted the required focused behavioral matrix; Sol
+performed the policy-authorized bounded test/integration takeover | 16 web tests
+plus build/typecheck/lint and desktop/mobile Browser checks`
+- `luna_worker | Phase 4 rules, architecture and test documentation | passed |
+Prettier and contract-name cross-check`
+- `terra_worker | Phase 4 two-context matchmaking Playwright flow | core flow
+retained, but two attempts left post-completion timing/reload races; Sol
+performed the policy-authorized test takeover | focused flow passed twice and
+the full regression suite passed twice consecutively`
 
 ## Phase 0 verification
 
@@ -462,8 +477,128 @@ three-player match, passed in two consecutive full runs`
   Formatting passes after generated Playwright failure artifacts are excluded by
   the existing ignore rules.
 
+## Phase 4 delegation ledger
+
+### SOL DECISIONS
+
+- Reuse the private authoritative match runner for public matches. Matchmaking
+  adds no second rules path: matched players receive the same per-recipient
+  state, command queue, timeout, reconnect and abandonment behavior.
+- Use a deterministic local FIFO queue with two-player matches. An authenticated
+  guest may occupy only one queue/lobby/match; the first two connected queued
+  guests are paired with default 50-point/20-second settings. Existing injected
+  test target/timing options accelerate E2E without trusting client settings.
+- Queue events are `queue:enter`, `queue:leave` and `queue:status`. Status exposes
+  only queued/position/players-needed public data. A successful pairing emits
+  each recipient's normal `match:state`; no opponent token or private hand enters
+  the queue contract.
+- Extend the existing SQLite repository rather than create a second connection.
+  Migrations add rating/stat columns to guests plus `completed_matches` and
+  `completed_match_players`. Store the mode, completion time, seed, final scores,
+  winner/tie outcome, rating before/after and serialized accepted command log.
+- New guests begin at rating 1000. For an N-player result, compare every pair
+  using standard Elo expectation and actual 1/0/0.5 by final score, scale each
+  comparison by K=24 divided by N-1, sum per player and apply deterministic
+  zero-sum integer rounding. Unique first place records a win; tied first places
+  record ties; all lower places record losses.
+- Apply completion in one synchronous SQLite transaction keyed by match ID.
+  Inserting an already-completed ID returns the stored result without updating
+  ratings or counters again. The match runner guards its completion callback as
+  well, but database idempotency is the trust boundary.
+- Expose `GET /api/leaderboard?page=1&pageSize=20`, with page >=1 and page size
+  1-100. Sort by rating descending, wins descending, games played ascending,
+  display name then guest ID for stable pagination. Return total, page metadata
+  and explicit rank.
+- The client enables Find Match and Leaderboard. Queue cancellation is explicit;
+  pairing reuses the existing table/final flow. The leaderboard uses semantic
+  tabular markup, empty/loading/error states and bounded previous/next controls.
+
+### TERRA TASKS
+
+- Own `apps/server/**`, `packages/shared/**` and necessary server tests for Phase 4. Refactor the private service only enough to share its active-match runner;
+  implement FIFO matchmaking, queue authorization/status/cleanup/reconnect,
+  SQLite migrations and transactional exactly-once match persistence, pairwise
+  Elo/stat updates, leaderboard pagination and completion integration.
+- Preserve guest-token hashing, private lobby/practice behavior, deterministic
+  engine semantics and recipient privacy. Do not add a second gameplay engine,
+  distributed queue, client-authored ratings, UI or Phase 5 work. Do not spawn
+  subagents and do not revert concurrent web edits.
+- Definition of done: real authenticated sockets pair from the queue and complete
+  through normal commands; leave/disconnect/stale membership is safe; results
+  survive repository reopen; exact duplicate completion is a no-op; 2/3/4-player
+  Elo is deterministic/zero-sum and handles ties; leaderboard ordering and
+  pagination are validated; all Phase 2/3 tests remain green.
+- Verification: `pnpm.cmd --filter @topthis/shared test && pnpm.cmd --filter
+@topthis/server test`, filtered build/typecheck, and root ESLint scoped to owned
+  files.
+- Follow-up after server/web integration owns `apps/web/e2e/matchmaking.spec.ts`
+  and narrowly necessary `playwright.config.ts` changes. Use two isolated browser
+  contexts to queue, pair, complete an accelerated real match, inspect changed
+  leaderboard ratings/order, refresh and verify persistence; retain console/error
+  evidence and preserve all earlier E2E flows. Verification is two consecutive
+  full `pnpm.cmd exec playwright test --workers=1` runs.
+
+### LUNA TASKS
+
+- Own `apps/web/src/**` for Phase 4 after using the agreed queue/leaderboard
+  contracts above. Enable Find Match and Leaderboard; add guest-first queue entry,
+  queued/cancel/matched states, reuse the private table, and build an accessible
+  paginated leaderboard with loading/empty/error states plus focused tests and
+  responsive CSS.
+- Do not edit server/shared/engine/content/Playwright, invent rating logic, expose
+  tokens, duplicate the table or spawn subagents. Preserve concurrent server
+  edits and all practice/private behavior.
+- Definition of done: authenticated guests can enter/leave queue; match state
+  opens the existing table; leaderboard fetch/render/pagination works; focused
+  tests cover queue status/cancel, match transition, rating rows, empty/error and
+  pagination; desktop/mobile remain contained.
+- Verification: `pnpm.cmd --filter @topthis/web test`, build/typecheck and root
+  ESLint scoped to web source files.
+- Follow-on documentation pass owns the Phase 4 additions to
+  `docs/GAME_RULES.md`, `docs/ARCHITECTURE.md` and `docs/TEST_PLAN.md`: document
+  FIFO matchmaking, the exact pairwise Elo/rounding/outcome rules, transaction
+  and table boundaries, leaderboard pagination/order, and concrete automated
+  coverage without claiming checks that have not passed. Verification is
+  Prettier on those three files and cross-checking names against shared schemas.
+
+### TOO SMALL TO DELEGATE
+
+- Review the shared match-runner refactor, pairwise Elo arithmetic/rounding,
+  migration idempotency and completion transaction boundaries.
+- Integrate queue UI/contracts, review the delegated matchmaking/leaderboard
+  multi-context Playwright flow, run Browser inspection, full gate, phase record,
+  commit and push.
+
+## Phase 4 verification
+
+- Four shared contract tests validate queue acknowledgement/status and bounded
+  leaderboard responses. Twenty server tests cover authenticated FIFO pairing,
+  leave/disconnect cleanup, cross-mode exclusion, per-recipient hands, normal
+  timeout completion, exactly-once persistence and stable leaderboard HTTP
+  validation alongside every earlier practice/private integration test.
+- SQLite migrations preserve existing guest identities and add rating/stat and
+  completed-match history. Completion is one match-ID-keyed transaction;
+  duplicate completion returns stored results without incrementing counters.
+  Seed, scores, placement/outcome, rating before/after and the accepted command
+  log are retained per completed match.
+- Pairwise K=24 Elo uses actual 1/0/0.5 by final score and deterministic
+  largest-remainder integer rounding. Covered two-, three- and four-player
+  results remain zero-sum; unique first is a win, tied first is a tie, and all
+  lower placements are losses.
+- Sixteen React tests cover guest-first queue entry, cancellation, false-status
+  races after pairing, table transition, leaderboard loading/rows/pagination,
+  empty and error states. The semantic table is horizontally contained at small
+  widths and retains bounded previous/next controls.
+- The two-context Playwright flow queues authenticated guests, checks private
+  hands, takes legal and skip actions through a real completed match, asserts
+  final placements, changed zero-sum ratings and win/loss records, then reloads
+  into the authoritative completed match and reopens the persisted leaderboard.
+  The focused flow and full four-test regression suite each passed twice.
+- Built-in Browser inspection passed for the live queue at desktop and 390x844
+  responsive widths and for the populated semantic leaderboard at desktop.
+- Full workspace tests, build, strict type checking, lint and formatting pass.
+
 ## Remaining non-blocking limitations
 
-- Practice, guest identity and private multiplayer/reconnection are complete.
-  Completed-match persistence, matchmaking, ratings, leaderboard and final
-  product/operational polish remain for Phases 4 and 5.
+- Gameplay, private/public multiplayer, persistence, ratings and leaderboard are
+  complete. Final product, deployment and operational polish remains for Phase 5.

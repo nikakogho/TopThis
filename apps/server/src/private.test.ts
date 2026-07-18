@@ -7,6 +7,7 @@ import {
   type LobbyLeaveAck,
   type PrivateMatchAck,
   type PrivateMatchView,
+  type QueueAck,
 } from '@topthis/shared';
 import { createServer, type TopThisServer } from './server.js';
 
@@ -376,5 +377,80 @@ describe('private multiplayer integration', () => {
         expectedTurnId: 'expired-turn',
       }),
     ).toMatchObject({ ok: false, error: { code: 'RECONNECT_EXPIRED' } });
+  });
+
+  it('matches authenticated guests FIFO, isolates hands, and persists the completed result once', async () => {
+    await start({ targetScore: 1, turnDurationMs: 10, roundResultDelayMs: 5 });
+    const first = await createGuest('Queue One');
+    const second = await createGuest('Queue Two');
+    const firstSocket = (await connect(first.token)).socket;
+    const secondSocket = (await connect(second.token)).socket;
+    const queued = await emitAck<QueueAck>(firstSocket, 'queue:enter', {});
+    expect(queued).toEqual({ ok: true, status: { queued: true, position: 1, playersNeeded: 1 } });
+    expect(await emitAck<LobbyAck>(firstSocket, 'lobby:create', {})).toMatchObject({
+      ok: false,
+      error: { code: 'ALREADY_ACTIVE' },
+    });
+    const firstState = waitForEvent<PrivateMatchView>(
+      firstSocket,
+      'match:state',
+      (view) => view.matchMode === 'matchmaking',
+    );
+    const secondState = waitForEvent<PrivateMatchView>(
+      secondSocket,
+      'match:state',
+      (view) => view.matchMode === 'matchmaking',
+    );
+    await emitAck<QueueAck>(secondSocket, 'queue:enter', {});
+    const [one, two] = await Promise.all([firstState, secondState]);
+    expect(one.matchId).toBe(two.matchId);
+    expect(
+      one.hand.some((card) => two.hand.some((other) => other.instanceId === card.instanceId)),
+    ).toBe(false);
+    for (const player of one.players) expect(player).not.toHaveProperty('hand');
+    const completed = waitForEvent<PrivateMatchView>(
+      firstSocket,
+      'match:state',
+      (view) => view.phase === 'completed',
+      1_000,
+    );
+    await completed;
+    if (!server) throw new Error('Server not started');
+    const leaderboard = await server.app.inject({
+      method: 'GET',
+      url: '/api/leaderboard?page=1&pageSize=20',
+    });
+    expect(leaderboard.statusCode).toBe(200);
+    expect(leaderboard.json()).toMatchObject({ total: 2, entries: [{ rank: 1 }, { rank: 2 }] });
+    expect(
+      leaderboard.json().entries.every((entry: { gamesPlayed: number }) => entry.gamesPlayed === 1),
+    ).toBe(true);
+    await delay(30);
+    expect(
+      (await server.app.inject({ method: 'GET', url: '/api/leaderboard?page=1&pageSize=20' }))
+        .json()
+        .entries.every((entry: { gamesPlayed: number }) => entry.gamesPlayed === 1),
+    ).toBe(true);
+  });
+
+  it('allows a queued guest to leave and safely removes a disconnecting queue socket', async () => {
+    await start();
+    const guest = await createGuest('Queue Leave');
+    const socket = (await connect(guest.token)).socket;
+    expect(await emitAck<QueueAck>(socket, 'queue:enter', {})).toMatchObject({
+      ok: true,
+      status: { position: 1 },
+    });
+    expect(await emitAck<QueueAck>(socket, 'queue:leave', {})).toEqual({
+      ok: true,
+      status: { queued: false, playersNeeded: 1 },
+    });
+    await emitAck<QueueAck>(socket, 'queue:enter', {});
+    socket.close();
+    const replacement = (await connect(guest.token)).socket;
+    expect(await emitAck<QueueAck>(replacement, 'queue:enter', {})).toMatchObject({
+      ok: true,
+      status: { position: 1 },
+    });
   });
 });

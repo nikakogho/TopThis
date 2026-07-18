@@ -53,6 +53,8 @@ type Active = {
   round?: NodeJS.Timeout;
   turnEndsAt?: number;
   settings: LobbySettings;
+  mode: 'private' | 'matchmaking';
+  completed?: boolean;
 };
 export interface PrivateOptions {
   seed?: number;
@@ -60,6 +62,13 @@ export interface PrivateOptions {
   roundResultDelayMs?: number;
   targetScore?: number;
   turnDurationMs?: number;
+  onComplete?: (input: {
+    matchId: string;
+    mode: 'private' | 'matchmaking';
+    seed: number;
+    commandLog: MatchCommand[];
+    players: Array<{ guestId: string; score: number }>;
+  }) => void;
 }
 export class PrivateService {
   private lobbies = new Map<string, Lobby>();
@@ -67,7 +76,8 @@ export class PrivateService {
   private matches = new Map<string, Active>();
   private guestMatch = new Map<string, string>();
   private seq = 0;
-  private o: Required<PrivateOptions>;
+  private queued = new Map<string, Seat>();
+  private o: Omit<Required<PrivateOptions>, 'onComplete'> & Pick<PrivateOptions, 'onComplete'>;
   constructor(o: PrivateOptions = {}) {
     this.o = {
       seed: o.seed ?? randomInt(0, 0x7fffffff),
@@ -75,6 +85,7 @@ export class PrivateService {
       roundResultDelayMs: o.roundResultDelayMs ?? 1500,
       targetScore: o.targetScore ?? 0,
       turnDurationMs: o.turnDurationMs ?? 0,
+      onComplete: o.onComplete,
     };
   }
   private guest(s: Socket) {
@@ -119,7 +130,8 @@ export class PrivateService {
   }
   create(s: Socket, raw: unknown) {
     const g = this.guest(s);
-    if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id)) throw Error('ALREADY_ACTIVE');
+    if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id) || this.queued.has(g.id))
+      throw Error('ALREADY_ACTIVE');
     const input = LobbyCreateIntentSchema.parse(raw);
     const l: Lobby = {
       code: this.code(),
@@ -135,7 +147,8 @@ export class PrivateService {
   join(s: Socket, raw: unknown) {
     const g = this.guest(s),
       code = LobbyCodeSchema.parse(LobbyJoinIntentSchema.parse(raw).code.trim().toUpperCase());
-    if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id)) throw Error('ALREADY_ACTIVE');
+    if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id) || this.queued.has(g.id))
+      throw Error('ALREADY_ACTIVE');
     const l = this.lobbies.get(code);
     if (!l || l.seats.length >= l.settings.playerCount) throw Error('LOBBY_UNAVAILABLE');
     l.seats.push({ guest: g, ready: false, socket: s });
@@ -171,27 +184,78 @@ export class PrivateService {
     for (const t of l.timers.values()) clearTimeout(t);
     this.lobbies.delete(l.code);
     const settings = { ...l.settings, targetScore: this.o.targetScore || l.settings.targetScore };
+    const state = this.startActive(l.seats, settings, 'private');
+    return { view: this.lv(l), matchId: state.matchId };
+  }
+  private startActive(seats: Seat[], settings: LobbySettings, mode: 'private' | 'matchmaking') {
     const state = createMatch({
       matchId: id('m'),
-      playerIds: l.seats.map((x) => x.guest.id),
+      playerIds: seats.map((x) => x.guest.id),
       definitions: catalog,
       seed: this.o.seed + this.seq++,
       targetScore: settings.targetScore,
     });
     const a: Active = {
       state,
-      seats: new Map(l.seats.map((x) => [x.guest.id, x])),
+      seats: new Map(seats.map((x) => [x.guest.id, x])),
       queue: Promise.resolve(),
       settings,
+      mode,
     };
     this.matches.set(state.matchId, a);
-    for (const x of l.seats) {
+    for (const x of seats) {
       this.guestLobby.delete(x.guest.id);
       this.guestMatch.set(x.guest.id, state.matchId);
     }
     this.schedule(a);
     this.emit(a);
-    return { view: this.lv(l), matchId: state.matchId };
+    return state;
+  }
+  queueEnter(s: Socket) {
+    const g = this.guest(s);
+    if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id)) throw Error('ALREADY_ACTIVE');
+    const old = this.queued.get(g.id);
+    if (old?.socket && old.socket.id !== s.id) old.socket.disconnect(true);
+    this.queued.set(g.id, { guest: g, ready: false, socket: s });
+    this.emitQueue();
+    this.pairQueue();
+    return this.queueStatus(g.id);
+  }
+  queueLeave(s: Socket) {
+    const g = this.guest(s),
+      seat = this.queued.get(g.id);
+    if (!seat || seat.socket?.id !== s.id) throw Error('NO_SESSION');
+    this.queued.delete(g.id);
+    this.emitQueue();
+    return this.queueStatus(g.id);
+  }
+  queueStatus(guestId: string) {
+    const position = [...this.queued.keys()].indexOf(guestId);
+    return position < 0
+      ? { queued: false, playersNeeded: 1 }
+      : { queued: true, position: position + 1, playersNeeded: Math.max(0, 2 - this.queued.size) };
+  }
+  private emitQueue() {
+    for (const [guestId, seat] of this.queued)
+      seat.socket?.emit('queue:status', this.queueStatus(guestId));
+  }
+  private pairQueue() {
+    while (this.queued.size >= 2) {
+      const seats = [...this.queued.values()].slice(0, 2);
+      for (const seat of seats) this.queued.delete(seat.guest.id);
+      this.startActive(
+        seats,
+        {
+          playerCount: 2,
+          targetScore: this.o.targetScore || defaults.targetScore,
+          turnDurationSeconds: this.o.turnDurationMs
+            ? Math.max(5, Math.ceil(this.o.turnDurationMs / 1000))
+            : defaults.turnDurationSeconds,
+        },
+        'matchmaking',
+      );
+    }
+    this.emitQueue();
   }
   private view(a: Active, gid: string): PrivateMatchView {
     const me = a.state.players.find((x) => x.id === gid)!;
@@ -208,6 +272,7 @@ export class PrivateService {
     };
     return PrivateMatchViewSchema.parse({
       matchId: a.state.matchId,
+      matchMode: a.mode,
       yourPlayerId: gid,
       stateVersion: a.state.stateVersion,
       phase: a.state.phase,
@@ -261,8 +326,7 @@ export class PrivateService {
         const r = applyCommand(a.state, c);
         if (r.accepted) {
           a.state = r.state;
-          this.schedule(a);
-          this.emit(a);
+          this.afterTransition(a);
         }
         resolve(
           PrivateMatchAckSchema.parse(
@@ -283,10 +347,23 @@ export class PrivateService {
       const r = applyCommand(a.state, c);
       if (r.accepted) {
         a.state = r.state;
-        this.schedule(a);
-        this.emit(a);
+        this.afterTransition(a);
       }
     });
+  }
+  private afterTransition(a: Active) {
+    this.schedule(a);
+    this.emit(a);
+    if (a.state.phase === 'completed' && !a.completed) {
+      a.completed = true;
+      this.o.onComplete?.({
+        matchId: a.state.matchId,
+        mode: a.mode,
+        seed: a.state.seed,
+        commandLog: a.state.commandLog,
+        players: a.state.players.map((p) => ({ guestId: p.id, score: p.capturedCardCount })),
+      });
+    }
   }
   private schedule(a: Active) {
     if (a.timer) clearTimeout(a.timer);
@@ -330,6 +407,11 @@ export class PrivateService {
   disconnect(socket: Socket) {
     const g = socket.data.guest as Guest | undefined;
     if (!g) return;
+    const queued = this.queued.get(g.id);
+    if (queued?.socket?.id === socket.id) {
+      this.queued.delete(g.id);
+      this.emitQueue();
+    }
     const l = this.lobbies.get(this.guestLobby.get(g.id) ?? ''),
       ls = l?.seats.find((x) => x.guest.id === g.id);
     if (l && ls && ls.socket?.id === socket.id) {
@@ -359,8 +441,15 @@ export class PrivateService {
   }
   reconnect(s: Socket) {
     const g = this.guest(s),
+      queued = this.queued.get(g.id),
       l = this.lobbies.get(this.guestLobby.get(g.id) ?? ''),
       ls = l?.seats.find((x) => x.guest.id === g.id);
+    if (queued) {
+      const old = queued.socket;
+      queued.socket = s;
+      if (old && old.id !== s.id) old.disconnect(true);
+      this.emitQueue();
+    }
     if (l && ls) {
       const old = ls.socket;
       ls.socket = s;

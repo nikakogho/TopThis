@@ -2,6 +2,8 @@ import {
   ClientHandshakeSchema,
   LobbyAckSchema,
   LobbyLeaveAckSchema,
+  QueueAckSchema,
+  QueueIntentSchema,
   PrivateMatchAckSchema,
   PublicServerHandshakeSchema,
   SocketErrorSchema,
@@ -26,6 +28,9 @@ export const SOCKET_EVENTS = {
   matchPlay: 'match:play',
   matchSkip: 'match:skip',
   matchState: 'match:state',
+  queueEnter: 'queue:enter',
+  queueLeave: 'queue:leave',
+  queueStatus: 'queue:status',
 } as const;
 
 export type ClientHelloResult =
@@ -131,6 +136,21 @@ export function attachSocketBoundary(
     lobby('lobbyJoin', (raw) => privateService.join(socket, raw));
     lobby('lobbyReady', (raw) => privateService.ready(socket, raw));
     lobby('lobbySettings', (raw) => privateService.settings(socket, raw));
+    for (const event of ['queueEnter', 'queueLeave'] as const)
+      socket.on(SOCKET_EVENTS[event], (_raw: unknown, ack?: (v: unknown) => void) => {
+        try {
+          QueueIntentSchema.parse(_raw);
+          if (socket.data.privateReconnectError)
+            throw Error(String(socket.data.privateReconnectError));
+          const status =
+            event === 'queueEnter'
+              ? privateService.queueEnter(socket)
+              : privateService.queueLeave(socket);
+          ack?.(QueueAckSchema.parse({ ok: true, status }));
+        } catch (error) {
+          ack?.(QueueAckSchema.parse({ ok: false, error: failure(error) }));
+        }
+      });
     socket.on(SOCKET_EVENTS.lobbyLeave, (_raw: unknown, ack?: (v: unknown) => void) => {
       try {
         if (socket.data.privateReconnectError)

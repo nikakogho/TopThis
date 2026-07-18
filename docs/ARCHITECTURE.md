@@ -26,3 +26,18 @@ expectations as applicable. An accepted command increments state version and is
 logged once; invalid, duplicate and stale commands do not mutate state. Replaying
 the accepted log from the same creation input produces byte-equivalent stable
 JSON.
+
+## Matchmaking and persistence
+
+Authenticated matchmaking is an in-memory FIFO queue with two-player pairing.
+It reuses the private active-match runner rather than introducing a second
+rules path. Recipient views remain isolated: only the local hand and legal IDs
+are sent, while reconnecting with the same guest token reclaims the existing
+seat during the grace window.
+
+The SQLite repository extends guest rows with rating and win/loss/tie/game
+statistics and adds `completed_matches` plus `completed_match_players`. Match
+completion, player result rows and rating/stat updates run in one transaction
+keyed by match ID; a duplicate completion returns the stored result without
+applying changes again. Leaderboard pagination is bounded (page >= 1,
+pageSize 1-100) and uses the documented stable ordering.

@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { createServer } from './server.js';
+import { LeaderboardResponseSchema } from '@topthis/shared';
 import { validateClientHello } from './socket.js';
 
 type Ack = { ok: boolean; view?: any; error?: { code: string; message: string } };
@@ -213,5 +214,47 @@ describe('TopThis server', () => {
     );
     expect(timedOut.stateVersion).toBeGreaterThan(created.view.stateVersion);
     expect(timedOut.roundResult).toBeDefined();
+  });
+
+  it('validates leaderboard queries and returns stable paginated ranks', async () => {
+    const server = await createServer({ databasePath: ':memory:' });
+    instances.push(server);
+    const a = server.guests.create('Alpha').guest;
+    const b = server.guests.create('Bravo').guest;
+    const c = server.guests.create('Charlie').guest;
+    server.guests.completeMatch({
+      matchId: 'leaderboard-test',
+      mode: 'private',
+      seed: 1,
+      commandLog: [],
+      players: [
+        { guestId: a.id, score: 3 },
+        { guestId: b.id, score: 2 },
+        { guestId: c.id, score: 1 },
+      ],
+    });
+    expect(
+      (await server.app.inject({ method: 'GET', url: '/api/leaderboard?page=0' })).statusCode,
+    ).toBe(400);
+    expect(
+      (await server.app.inject({ method: 'GET', url: '/api/leaderboard?pageSize=101' })).statusCode,
+    ).toBe(400);
+    const first = LeaderboardResponseSchema.parse(
+      (
+        await server.app.inject({ method: 'GET', url: '/api/leaderboard?page=1&pageSize=2' })
+      ).json(),
+    );
+    const second = LeaderboardResponseSchema.parse(
+      (
+        await server.app.inject({ method: 'GET', url: '/api/leaderboard?page=2&pageSize=2' })
+      ).json(),
+    );
+    expect(first.entries.map((entry) => entry.rank)).toEqual([1, 2]);
+    expect(second.entries.map((entry) => entry.rank)).toEqual([3]);
+    expect([...first.entries, ...second.entries].map((entry) => entry.guestId)).toEqual([
+      a.id,
+      b.id,
+      c.id,
+    ]);
   });
 });

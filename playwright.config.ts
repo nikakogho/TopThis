@@ -23,6 +23,7 @@ export default defineConfig({
         TOPTHIS_E2E_BOT_DELAY_MS: '100',
         TOPTHIS_E2E_BOT_SKIP_CHANCE: '0',
         TOPTHIS_E2E_ROUND_DELAY_MS: '1000',
+        TOPTHIS_DATABASE_PATH: ':memory:',
       },
     },
     {

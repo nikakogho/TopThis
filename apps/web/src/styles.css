@@ -138,6 +138,49 @@ main {
   margin: 0;
   color: #aaa2b4;
 }
+.queue-screen {
+  max-width: 42rem;
+}
+.leaderboard-screen {
+  max-width: 56rem;
+}
+.leaderboard-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #3d374a;
+  border-radius: 0.7rem;
+}
+.leaderboard-screen table {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  background: #17151e;
+}
+.leaderboard-screen th,
+.leaderboard-screen td {
+  padding: 0.75rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid #302c3b;
+}
+.leaderboard-screen th {
+  color: #efbb58;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.leaderboard-screen td {
+  color: #d9d1df;
+}
+.leaderboard-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.leaderboard-pages span {
+  color: #aaa2b4;
+}
 .lobby-screen {
   max-width: 52rem;
   align-content: start;

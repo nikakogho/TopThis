@@ -48,6 +48,7 @@ export const SocketErrorSchema = z
       'NOT_HOST',
       'NOT_READY',
       'RECONNECT_EXPIRED',
+      'QUEUE_UNAVAILABLE',
     ]),
     message: z.string().min(1),
   })
@@ -193,6 +194,7 @@ export const LobbyLeaveAckSchema = z.discriminatedUnion('ok', [
 export type LobbyLeaveAck = z.infer<typeof LobbyLeaveAckSchema>;
 
 export const PrivateMatchViewSchema = PracticeMatchViewSchema.extend({
+  matchMode: z.enum(['private', 'matchmaking']),
   players: z
     .array(
       PracticePlayerViewSchema.extend({
@@ -219,3 +221,54 @@ export const PrivateMatchAckSchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 export type PrivateMatchAck = z.infer<typeof PrivateMatchAckSchema>;
+
+/** Matchmaking deliberately exposes no opponent identity or match secrets. */
+export const QueueStatusSchema = z
+  .object({
+    queued: z.boolean(),
+    position: z.number().int().positive().optional(),
+    playersNeeded: z.number().int().min(0).max(1),
+  })
+  .strict();
+export type QueueStatus = z.infer<typeof QueueStatusSchema>;
+export const QueueIntentSchema = z.object({}).strict();
+export const QueueAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), status: QueueStatusSchema }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      error: SocketErrorSchema,
+      status: QueueStatusSchema.optional(),
+    })
+    .strict(),
+]);
+export type QueueAck = z.infer<typeof QueueAckSchema>;
+
+export const LeaderboardEntrySchema = z
+  .object({
+    rank: z.number().int().positive(),
+    guestId: SafeIdSchema,
+    displayName: DisplayNameSchema,
+    rating: z.number().int(),
+    wins: z.number().int().nonnegative(),
+    losses: z.number().int().nonnegative(),
+    ties: z.number().int().nonnegative(),
+    gamesPlayed: z.number().int().nonnegative(),
+  })
+  .strict();
+export const LeaderboardResponseSchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().min(1).max(100),
+    entries: z.array(LeaderboardEntrySchema),
+  })
+  .strict();
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponseSchema>;
+export const LeaderboardQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+export type LeaderboardQuery = z.infer<typeof LeaderboardQuerySchema>;

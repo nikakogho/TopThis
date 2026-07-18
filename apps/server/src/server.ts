@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url';
 import fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { Server as SocketIoServer } from 'socket.io';
-import { HealthResponseSchema } from '@topthis/shared';
+import {
+  HealthResponseSchema,
+  LeaderboardQuerySchema,
+  LeaderboardResponseSchema,
+} from '@topthis/shared';
 import { attachSocketBoundary } from './socket.js';
 import { PracticeService } from './practice.js';
 import { SqliteGuestRepository, type GuestRepository } from './guests.js';
@@ -67,7 +71,13 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
   });
   const practice = new PracticeService(options.practice);
   const guests = options.guests ?? new SqliteGuestRepository(options.databasePath);
-  const privateService = new PrivateService(options.private);
+  const privateService = new PrivateService({
+    ...options.private,
+    onComplete: (input) => {
+      guests.completeMatch(input);
+      options.private?.onComplete?.(input);
+    },
+  });
   app.post('/api/guests', async (request) => {
     const intent = GuestProfileCreationIntentSchema.parse(request.body);
     return GuestCreateResponseSchema.parse(guests.create(intent.displayName));
@@ -77,6 +87,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<T
     const guest = token && guests.findByToken(token);
     if (!guest) return reply.code(401).send({ error: 'Unauthorized' });
     return GuestMeResponseSchema.parse({ guest });
+  });
+  app.get('/api/leaderboard', async (request) => {
+    const { page, pageSize } = LeaderboardQuerySchema.parse(request.query);
+    return LeaderboardResponseSchema.parse(guests.leaderboard(page, pageSize));
   });
   io.use((socket, next) => {
     const token =

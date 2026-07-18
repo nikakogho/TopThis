@@ -85,6 +85,7 @@ test('three guests host, join, start, time out, reconnect, and complete privatel
     if (await playable.count()) {
       await playable.click();
       await actor.getByRole('button', { name: 'Play Card' }).click();
+      await expect(actor.getByRole('button', { name: 'Play Card' })).toBeDisabled();
     } else await actor.getByRole('button', { name: 'Skip' }).click();
 
     const savedHand = await two

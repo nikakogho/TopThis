@@ -12,11 +12,17 @@ import {
   type PracticeMatchView,
   type PrivateMatchAck,
   type PrivateMatchView,
+  type QueueStatus,
+  type QueueAck,
+  type LeaderboardResponse,
+  QueueAckSchema,
+  LeaderboardResponseSchema,
 } from '@topthis/shared';
 import './styles.css';
 
 type Card = PracticeMatchView['hand'][number];
-type Screen = 'landing' | 'setup' | 'identity' | 'host' | 'join' | 'lobby' | 'match';
+type Screen =
+  'landing' | 'setup' | 'identity' | 'host' | 'join' | 'lobby' | 'match' | 'queue' | 'leaderboard';
 
 const socket = io(import.meta.env.VITE_TOPTHIS_SERVER_URL || undefined, {
   autoConnect: false,
@@ -70,9 +76,10 @@ function App() {
   const [privateView, setPrivateView] = useState<PrivateMatchView>();
   const [guest, setGuest] = useState<Guest>();
   const [lobby, setLobby] = useState<LobbyView>();
-  const [mode, setMode] = useState<'practice' | 'private'>('practice');
+  const [mode, setMode] = useState<'practice' | 'private' | 'matchmaking'>('practice');
   const [guestName, setGuestName] = useState('Player');
   const [pendingAction, setPendingAction] = useState<'host' | 'join'>('host');
+  const [pendingQueue, setPendingQueue] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [settings, setSettings] = useState({
     playerCount: 2,
@@ -84,7 +91,12 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(socket.connected);
   const [now, setNow] = useState(Date.now());
-  const view = mode === 'private' ? privateView : practiceView;
+  const [queueStatus, setQueueStatus] = useState<QueueStatus>({ queued: false, playersNeeded: 1 });
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>();
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState('');
+  const networked = mode !== 'practice';
+  const view = networked ? privateView : practiceView;
 
   useEffect(() => {
     const onState = (next: PracticeMatchView) => {
@@ -101,8 +113,12 @@ function App() {
     };
     const onMatch = (next: PrivateMatchView) => {
       setPrivateView(next);
-      setMode('private');
+      setMode(next.matchMode);
       setScreen('match');
+    };
+    const onQueue = (next: QueueStatus) => {
+      setQueueStatus(next);
+      setScreen((current) => (next.queued ? 'queue' : current === 'queue' ? 'landing' : current));
     };
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
@@ -110,6 +126,7 @@ function App() {
     socket.on('practice:state', onState);
     socket.on('lobby:state', onLobby);
     socket.on('match:state', onMatch);
+    socket.on('queue:status', onQueue);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
@@ -117,6 +134,7 @@ function App() {
       socket.off('practice:state', onState);
       socket.off('lobby:state', onLobby);
       socket.off('match:state', onMatch);
+      socket.off('queue:status', onQueue);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
@@ -178,6 +196,49 @@ function App() {
   const openPrivate = (action: 'host' | 'join') => {
     setPendingAction(action);
     setScreen(guest ? action : 'identity');
+  };
+  const enterQueue = async (knownGuest?: Guest) => {
+    setBusy(true);
+    setError('');
+    try {
+      if (!knownGuest) await ensureGuest();
+      socket.auth = { guestToken: localStorage.getItem('topthis.guestToken') };
+      socket.connect();
+      socket.emit('queue:enter', {}, (raw: QueueAck) => {
+        const ack = QueueAckSchema.parse(raw);
+        setBusy(false);
+        if (ack.ok) {
+          setQueueStatus(ack.status);
+          // Pairing can emit match:state before this acknowledgement arrives.
+          if (ack.status.queued) setScreen('queue');
+        } else setError(ack.error.message);
+      });
+    } catch (reason) {
+      setBusy(false);
+      setError(reason instanceof Error ? reason.message : 'Could not join matchmaking.');
+    }
+  };
+  const leaveQueue = () =>
+    socket.emit('queue:leave', {}, (raw: QueueAck) => {
+      const ack = QueueAckSchema.parse(raw);
+      if (ack.ok) {
+        setQueueStatus(ack.status);
+        setScreen('landing');
+      } else setError(ack.error.message);
+    });
+  const loadLeaderboard = async (page = 1) => {
+    setLeaderboardLoading(true);
+    setLeaderboardError('');
+    setScreen('leaderboard');
+    try {
+      const response = await fetch(`/api/leaderboard?page=${page}&pageSize=20`);
+      if (!response.ok) throw new Error('Could not load leaderboard.');
+      setLeaderboard(LeaderboardResponseSchema.parse(await response.json()));
+    } catch (reason) {
+      setLeaderboardError(reason instanceof Error ? reason.message : 'Could not load leaderboard.');
+    } finally {
+      setLeaderboardLoading(false);
+    }
   };
   const createLobby = async () => {
     setBusy(true);
@@ -273,17 +334,17 @@ function App() {
     };
     const applyAck = (ack: PracticeAck | PrivateMatchAck) => {
       if (ack.ok) {
-        if (mode === 'private') setPrivateView(ack.view as PrivateMatchView);
+        if (networked) setPrivateView(ack.view as PrivateMatchView);
         else setView(ack.view);
       } else {
         if (ack.view) {
-          if (mode === 'private') setPrivateView(ack.view as PrivateMatchView);
+          if (networked) setPrivateView(ack.view as PrivateMatchView);
           else setView(ack.view);
         }
         setError(ack.error.message);
       }
     };
-    if (mode === 'private') {
+    if (networked) {
       socket.emit(`match:${type}`, payload, (ack: PrivateMatchAck) => applyAck(ack));
     } else {
       socket.emit(`practice:${type}`, payload, (ack: PracticeAck) => applyAck(ack));
@@ -304,13 +365,107 @@ function App() {
           <button onClick={() => setScreen('setup')}>Practice</button>
           <button onClick={() => openPrivate('host')}>Host Game</button>
           <button onClick={() => openPrivate('join')}>Join Game</button>
-          {['Find Match', 'Leaderboard', 'How to Play'].map((label) => (
-            <button className="muted" disabled key={label}>
-              {label}
-              <small>Coming soon</small>
-            </button>
-          ))}
+          <button
+            onClick={() => {
+              if (guest) void enterQueue();
+              else {
+                setPendingQueue(true);
+                setScreen('identity');
+              }
+            }}
+            disabled={busy}
+          >
+            Find Match
+          </button>
+          <button onClick={() => void loadLeaderboard()}>Leaderboard</button>
+          <button className="muted" disabled>
+            How to Play<small>Coming soon</small>
+          </button>
         </div>
+      </main>
+    );
+  }
+
+  if (screen === 'queue')
+    return (
+      <main className="setup queue-screen">
+        <p className="eyebrow">MATCHMAKING</p>
+        <h1>Finding your match</h1>
+        <p aria-live="polite">
+          {queueStatus.position
+            ? `Position ${queueStatus.position} · ${queueStatus.playersNeeded} more ${queueStatus.playersNeeded === 1 ? 'player' : 'players'} needed`
+            : 'Waiting for another player…'}
+        </p>
+        <button className="secondary" onClick={leaveQueue}>
+          Cancel
+        </button>
+        {error && <p role="alert">{error}</p>}
+      </main>
+    );
+
+  if (screen === 'leaderboard') {
+    const page = leaderboard?.page ?? 1;
+    const pageSize = leaderboard?.pageSize ?? 20;
+    const total = leaderboard?.total ?? 0;
+    return (
+      <main className="setup leaderboard-screen">
+        <p className="eyebrow">RATINGS</p>
+        <h1>Leaderboard</h1>
+        {leaderboardLoading && <p role="status">Loading leaderboard…</p>}
+        {leaderboardError && <p role="alert">{leaderboardError}</p>}
+        {!leaderboardLoading &&
+          !leaderboardError &&
+          leaderboard &&
+          (leaderboard.entries.length ? (
+            <>
+              <div className="leaderboard-table-scroll">
+                <table>
+                  <caption className="sr-only">TopThis player ratings</caption>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Player</th>
+                      <th>Rating</th>
+                      <th>Games</th>
+                      <th>W-L-T</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.entries.map((entry) => (
+                      <tr key={entry.guestId}>
+                        <td>{entry.rank}</td>
+                        <td>{entry.displayName}</td>
+                        <td>{entry.rating}</td>
+                        <td>{entry.gamesPlayed}</td>
+                        <td>
+                          {entry.wins}-{entry.losses}-{entry.ties}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <nav className="leaderboard-pages" aria-label="Leaderboard pages">
+                <button disabled={page <= 1} onClick={() => void loadLeaderboard(page - 1)}>
+                  Previous
+                </button>
+                <span>
+                  Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
+                </span>
+                <button
+                  disabled={page * pageSize >= total}
+                  onClick={() => void loadLeaderboard(page + 1)}
+                >
+                  Next
+                </button>
+              </nav>
+            </>
+          ) : (
+            <p>No completed matches yet.</p>
+          ))}
+        <button className="link" onClick={() => setScreen('landing')}>
+          Back
+        </button>
       </main>
     );
   }
@@ -330,8 +485,11 @@ function App() {
             setBusy(true);
             setError('');
             try {
-              await ensureGuest();
-              setScreen(pendingAction);
+              const identity = await ensureGuest();
+              if (pendingQueue) {
+                setPendingQueue(false);
+                await enterQueue(identity);
+              } else setScreen(pendingAction);
             } catch (reason) {
               setError(reason instanceof Error ? reason.message : 'Could not create the guest.');
             } finally {
@@ -578,7 +736,10 @@ function App() {
   return (
     <main className="table" onKeyDown={onTableKeyDown}>
       <header className="table-header">
-        <span className="eyebrow">TOPTHIS / {mode === 'private' ? 'PRIVATE' : 'PRACTICE'}</span>
+        <span className="eyebrow">
+          TOPTHIS /{' '}
+          {mode === 'private' ? 'PRIVATE' : mode === 'matchmaking' ? 'MATCHMAKING' : 'PRACTICE'}
+        </span>
         <span className={`connection ${connected ? 'online' : ''}`}>
           <span aria-hidden="true">●</span> {connected ? 'Connected' : 'Reconnecting'}
         </span>
@@ -597,7 +758,7 @@ function App() {
               <strong>{player.displayName}</strong>
               <span>{player.handCount} cards in hand</span>
               <span>{player.capturedCardCount} captured</span>
-              {mode === 'private' && (
+              {networked && (
                 <span>
                   {(player as PrivateMatchView['players'][number]).abandoned
                     ? 'Abandoned'
@@ -719,7 +880,7 @@ function App() {
                 ? `${view.roundResult.pileCount} cards captured.`
                 : 'The final round is complete.'}
             </p>
-            {mode === 'private' && view.phase === 'completed' && privateView?.placements && (
+            {networked && view.phase === 'completed' && privateView?.placements && (
               <p>
                 Final place: {privateView.placements.indexOf(privateView.yourPlayerId) + 1} of{' '}
                 {privateView.placements.length}
@@ -734,10 +895,10 @@ function App() {
                   setPrivateView(undefined);
                   setSelected(undefined);
                   setMode('practice');
-                  setScreen(mode === 'private' ? 'landing' : 'setup');
+                  setScreen(networked ? 'landing' : 'setup');
                 }}
               >
-                {mode === 'private' ? 'Return home' : 'New practice'}
+                {networked ? 'Return home' : 'New practice'}
               </button>
             )}
           </section>

@@ -50,6 +50,25 @@ the highest captured-card score is a winner.
 Defaults are a target score of 50, a 20-second server turn timer and a 60-second
 server reconnection grace period.
 
+## Matchmaking and ratings
+
+Find Match uses an authenticated, deterministic FIFO queue for two-player
+matches. The queue exposes only `queued`, `position` and `playersNeeded`; a
+pair receives the same authoritative private-match runner, including hidden
+hands, serialized commands, turn timeouts, reconnect grace and abandoned-seat
+auto-skips. Queue events are `queue:enter`, `queue:leave` and `queue:status`.
+
+Completed matches are persisted exactly once. For each player, Elo compares
+every opponent using the standard expectation, with K = 24/(N-1), actual score
+1, 0 or 0.5 from final score, and deterministic floor plus
+largest-fractional-remainder zero-sum integer rounding. Unique first place
+increments wins; tied first places increment ties; all lower places increment
+losses. New guests start at rating 1000.
+
+The leaderboard accepts page >= 1 and pageSize 1-100. Results sort by rating
+descending, wins descending, games played ascending, display name, then guest ID
+for stable pagination.
+
 ## Authority, timeouts and privacy
 
 The deterministic engine calculates legal moves, turn order, round scoring and

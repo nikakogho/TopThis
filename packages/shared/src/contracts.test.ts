@@ -3,6 +3,7 @@ import {
   ClientHandshakeSchema,
   GuestProfileCreationIntentSchema,
   HealthResponseSchema,
+  LeaderboardQuerySchema,
   PracticeAckSchema,
   PracticeCreateIntentSchema,
   PracticeMatchViewSchema,
@@ -86,5 +87,15 @@ describe('shared boundary contracts', () => {
       }),
     ).toThrow();
     expect(() => PracticeAckSchema.parse({ ok: false })).toThrow();
+  });
+
+  it('coerces bounded leaderboard pagination defaults at the HTTP boundary', () => {
+    expect(LeaderboardQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
+    expect(LeaderboardQuerySchema.parse({ page: '2', pageSize: '50' })).toEqual({
+      page: 2,
+      pageSize: 50,
+    });
+    expect(() => LeaderboardQuerySchema.parse({ page: '0' })).toThrow();
+    expect(() => LeaderboardQuerySchema.parse({ pageSize: '101' })).toThrow();
   });
 });
