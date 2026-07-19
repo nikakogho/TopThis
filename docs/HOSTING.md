@@ -1,30 +1,47 @@
-# Public MVP hosting (Koyeb)
+# Public MVP hosting (Render Free)
 
-The $0 public MVP is one Koyeb free Web Service running the Vite build and
-Fastify/API/Socket.IO process on the same origin. Use the button below with a
-Koyeb account:
+The recommended $0 onboarding path is one Render Free Web Service created from
+the repository Blueprint. Render supports WebSockets, and the Blueprint keeps
+the Vite build plus Fastify/API/Socket.IO process on one same-origin instance.
 
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com%2Fnikakogho%2FTopThis&branch=main&name=topthis&builder=buildpack&instance_type=free&region=fra&ports=8000%3Bhttp%3B%2F&env%5BNODE_ENV%5D=production&env%5BTOPTHIS_DATABASE_PATH%5D=%2Ftmp%2Ftopthis.sqlite&build_command=pnpm%20build&run_command=pnpm%20start)
-
-The query names above follow Koyeb’s [Deploy to Koyeb button documentation](https://www.koyeb.com/docs/build-and-deploy/deploy-to-koyeb-button): `type`, `repository`, `branch`, `name`, `builder`, `instance_type`, `region`, `ports`, `env[...]`, `build_command`, and `run_command`.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fnikakogho%2FTopThis)
 
 ## Click and verify
 
-1. Click the button, sign in to Koyeb, and confirm the public GitHub repository and `main` branch.
-2. Confirm one **Web** Service named `topthis`, free instance, Frankfurt (`fra`), HTTP port 8000, and the two environment variables.
-3. Deploy. The build command is `pnpm build`; the run command is `pnpm start`.
-4. Open the generated public URL and visit `/health`; it should return the server’s healthy response.
-5. Keep exactly one running instance. Socket.IO games and SQLite state are process-local.
+1. Click **Deploy to Render**, sign in, and authorize GitHub for the public
+   `nikakogho/TopThis` repository.
+2. Approve the prefilled Blueprint from `render.yaml`. It creates one Free Web
+   Service, uses `pnpm build` to build, and runs
+   `NODE_ENV=production pnpm start` on the Render `PORT`. The Blueprint sets
+   `TOPTHIS_DATABASE_PATH=/tmp/topthis.sqlite`; automatic deploys are disabled,
+   so updates are deployed manually from Render after reviewing a new commit.
+3. Choose the Free plan and click **Apply**. No app secret or payment method is
+   required for this MVP.
+4. Open the generated `https://<service>.onrender.com` URL and verify
+   `https://<service>.onrender.com/health` returns the healthy server response.
+5. Keep exactly one instance. Socket.IO games and SQLite state are process-local.
 
-The free service may sleep and wake. The first request after sleep can be slow.
-Local SQLite/profile/rating/leaderboard state is ephemeral on free Koyeb and can
-reset after sleep, reschedule, or deploy. Active games cannot survive process
-replacement.
+Fallback: in Render, choose **New → Blueprint**, enter
+`https://github.com/nikakogho/TopThis`, select `main`, review `render.yaml`, and
+apply the Free service manually. Do not add a second instance.
 
-## Cost trade-offs
+Render Free spins down after 15 minutes of inactivity and typically takes about
+one minute to wake. It includes 750 service hours per month. The filesystem is
+ephemeral: local SQLite/profile/rating/leaderboard state can reset after
+spin-down, reschedule, or deploy, and active games cannot survive process
+replacement. For persistence, use a paid durable service and external/durable
+database after the MVP; see [Render pricing](https://render.com/pricing) and
+[persistent disks](https://render.com/docs/disks).
 
-- Koyeb Free: $0, suitable for this single-instance public MVP. [Free instance docs](https://www.koyeb.com/docs/reference/instances)
-- Render Free: $0, roughly one-minute wake, 15-minute idle sleep, ephemeral disk. [Render pricing](https://render.com/pricing)
+Koyeb is not the recommended onboarding path: Koyeb’s February 17, 2026
+announcement says new users must use Pro or higher plans. See the [Koyeb
+announcement](https://www.koyeb.com/blog/koyeb-is-joining-mistral-ai-to-build-the-future-of-ai-infrastructure).
+
+## Cost comparison
+
+- Render Free: $0, WebSockets, 15-minute idle spin-down, about one-minute wake,
+  750 hours, ephemeral filesystem.
 - Railway Hobby: $5 minimum. [Railway pricing](https://railway.com/pricing)
-- Render durable: $7 plus disk. [Render persistent disks](https://render.com/docs/disks)
-- Fly.io: approximately $2.17 before network for 256 MB compute ($2.02) plus a 1 GB volume ($0.15). [Fly pricing](https://fly.io/docs/about/pricing/)
+- Render durable: $7 plus disk. [Render disks](https://render.com/docs/disks)
+- Fly.io: about $2.17 before network for 256 MB compute plus a 1 GB volume.
+  [Fly pricing](https://fly.io/docs/about/pricing/)

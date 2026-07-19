@@ -5,14 +5,14 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Deployment 1 — deployment-ready, awaiting Koyeb account authorization
+- Active phase: Deployment 1b — Render-ready, awaiting account authorization
 - Last completed phase: Enhancement 4 — complete licensed card artwork
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: Koyeb account sign-in/authorization and confirmation of the
-  prefilled free deployment; no credentials or billing are required by the app.
+- External blockers: Render account sign-in/authorization and confirmation of
+  the prefilled free Blueprint; no credentials or billing are required by the app.
 
 ## Phase 0 delegation ledger
 
@@ -1457,3 +1457,97 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
   returns its public `.koyeb.app` URL, `/health`, static assets, guest identity
   and a real two-browser Socket.IO game still need to be verified before this
   phase can be marked complete.
+
+## Deployment 1b delegation ledger
+
+### SOL DECISIONS
+
+- Retire Koyeb as the recommended onboarding path. Koyeb's February 17, 2026
+  acquisition announcement states that new users must provide a payment method
+  and subscribe to a paid Pro-or-higher plan; the signed-in dashboard shown by
+  the user no longer exposes ordinary free-service creation.
+- Replace it with one Render Free Web Service in Frankfurt. Render currently
+  offers free Node web services, native pnpm tooling, managed HTTPS, WebSocket
+  connections, a public `onrender.com` URL and Blueprint-based one-click deploys.
+- Keep the same one-process, same-origin and single-instance architecture. Use
+  Render's supplied `PORT`, the existing root build/start commands, `/health`
+  health checks, runtime-only `NODE_ENV=production` and disposable SQLite under
+  `/tmp`. Do not expose production mode during dependency installation because
+  the build requires root development tools such as Vite and TypeScript.
+- Accept Render Free's 15-minute idle spin-down, approximately one-minute cold
+  start, 750 monthly running hours and ephemeral local filesystem for this MVP.
+  Do not add a temporary 30-day Postgres database or imply durable profiles.
+
+### TERRA TASKS
+
+- Own `render.yaml` and deployment-runtime verification for Deployment 1b.
+  Define exactly one Frankfurt Node web service on the free plan with the root
+  pnpm build/start commands, `/health`, production mode and ephemeral SQLite.
+- Preserve the existing package/runtime and server-authority boundaries. Do not
+  add a Dockerfile, database, secrets, application changes or documentation;
+  do not spawn subagents or revert concurrent work.
+- Definition of done: the Blueprint matches Render's current schema, requires no
+  secret input, uses one free instance, and the existing production-online smoke
+  proves the commands and platform-supplied port behavior.
+- Verification: Blueprint/schema inspection, `pnpm.cmd build`,
+  `pnpm.cmd smoke:production`, scoped format check and `git diff --check`.
+
+### LUNA TASKS
+
+- Own `README.md` and `docs/HOSTING.md` for Deployment 1b. Replace Koyeb as the
+  recommended path with an explicit-repository Deploy to Render button and exact
+  fallback steps. Explain the Koyeb policy change and Render Free limitations.
+- Keep the durable alternatives accurate, use only official current sources,
+  and do not claim a public deployment exists before live verification. Do not
+  edit code, package files, Blueprint/runtime configuration or unrelated docs;
+  do not spawn subagents or revert concurrent work.
+- Definition of done: a newly signed-up user can authorize GitHub, approve the
+  prefilled free Blueprint, and obtain an `onrender.com` URL without entering
+  application secrets or payment details.
+- Verification: validate all links, compare instructions to `render.yaml`, run
+  scoped Prettier and `git diff --check`.
+
+### TOO SMALL TO DELEGATE
+
+- Review the Koyeb policy evidence and Render's current free, WebSocket, pnpm,
+  Blueprint, port and health-check documentation; approve the migration.
+- Review worker diffs, run the complete release gate, commit and push the fixed
+  deployment handoff, then inspect the Render authorization page in the browser.
+- After the user confirms the external Render deployment, verify `/health`,
+  static assets, guest identity and a real two-browser Socket.IO game before
+  marking the public launch complete.
+
+## Deployment 1b readiness record
+
+### Correction and delegated delivery
+
+- The user's signed-in Koyeb dashboard showed only the Mistral transition page.
+  Koyeb's official acquisition announcement confirms the cause: new users must
+  supply a payment method and subscribe to Pro or higher, so Koyeb is no longer
+  a valid $0 onboarding path despite older free-instance documentation.
+- Terra added one root `render.yaml` service: Node runtime, Frankfurt, Free plan,
+  one instance, explicit pnpm install/build, runtime production start, `/health`,
+  ephemeral SQLite and manual deploys as recommended for a public one-click
+  Blueprint. Sol corrected production mode to runtime-only so build-time Vite
+  and TypeScript dependencies cannot be pruned.
+- Luna replaced the README/hosting handoff with the explicit-repository Render
+  button, Blueprint/fallback steps, manual-update instructions, official Koyeb
+  policy evidence and Render's cold-start, usage and ephemeral-data limitations.
+
+### Verification evidence
+
+- All 101 engine/shared/server/web tests pass. Workspace typecheck, lint,
+  formatting, deterministic balance analysis and artwork validation pass.
+- The production-online smoke passes against the compiled client, `/health`, a
+  local card asset, guest API and a real recipient-safe Socket.IO practice game.
+- Playwright passes 11/11 multiplayer and responsive flows. The Blueprint was
+  structurally reviewed against Render's current official specification; the
+  Render CLI is not installed locally, so the external control plane remains the
+  final schema authority when the user approves the Blueprint.
+
+### Remaining external action
+
+- Commit and push this correction, then the user must sign into Render, authorize
+  the GitHub repository and approve the prefilled free Blueprint. The launch is
+  not complete until the resulting `onrender.com` root, `/health`, static assets,
+  guest identity and a real two-browser Socket.IO game pass public verification.

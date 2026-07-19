@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: topthis
+    runtime: node
+    region: frankfurt
+    plan: free
+    numInstances: 1
+    autoDeployTrigger: off
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: NODE_ENV=production pnpm start
+    healthCheckPath: /health
+    envVars:
+      - key: TOPTHIS_DATABASE_PATH
+        value: /tmp/topthis.sqlite
