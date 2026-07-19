@@ -102,11 +102,7 @@ function CardFace({ card }: { card: Card }) {
         {imageFailed ? (
           <span className="fallback-symbol">◆</span>
         ) : (
-          <img
-            src={`/cards/${card.definitionId}.png`}
-            alt=""
-            onError={() => setImageFailed(true)}
-          />
+          <img src={card.iconPath} alt="" onError={() => setImageFailed(true)} />
         )}
       </span>
       <strong>{card.name}</strong>

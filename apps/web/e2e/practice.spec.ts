@@ -22,7 +22,9 @@ test('upgrades an anonymous practice connection before hosting multiplayer', asy
   await expect(opponents).toContainText('Bot 1');
   await expect(opponents).toContainText('10 cards in hand');
   await expect(opponents.locator('img')).toHaveCount(0);
-  await expect(page.locator('.fallback-symbol').first()).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Your hand' }).locator('.art img').first(),
+  ).toBeVisible();
   const hand = page.getByRole('region', { name: 'Your hand' });
   await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
   const handGeometry = await hand.evaluate((element) => {
@@ -132,6 +134,32 @@ test('keeps a ten-card table hand within a mobile viewport', async ({ page }) =>
   await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
   expect(await hand.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('serves contained local card artwork on desktop and mobile', async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Practice' }).click();
+    await page.getByLabel('Display name').fill('Art Ada');
+    await page.getByLabel('Bot opponents').selectOption('1');
+    await page.getByRole('button', { name: 'Start practice' }).click();
+    const art = page.getByRole('region', { name: 'Your hand' }).locator('.art img').first();
+    await expect(art).toBeVisible();
+    await expect(art).toHaveAttribute('src', /\/cards\/.+\.png$/);
+    expect(
+      await art.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+    ).toBe(true);
+    expect(
+      await art.evaluate((image) => {
+        const styles = getComputedStyle(image);
+        return styles.objectFit === 'contain' && image.getBoundingClientRect().width > 0;
+      }),
+    ).toBe(true);
+  }
 });
 
 test('contains a six-seat practice table on desktop and mobile', async ({ page }) => {

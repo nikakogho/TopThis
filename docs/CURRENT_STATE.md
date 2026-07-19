@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Complete — Enhancement 3 release gate passed
-- Last completed phase: Enhancement 3 — departures, mixed bots and physical pile
+- Active phase: Complete — Enhancement 4 release gate passed
+- Last completed phase: Enhancement 4 — complete licensed card artwork
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -1200,3 +1200,134 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
   ratings. Built-in Browser review also completed a real mixed match, confirmed
   the physical pile and bot status, and verified dialog focus, Escape recovery,
   acknowledged exit and return home.
+
+## Enhancement 4 delegation ledger
+
+### SOL DECISIONS
+
+- Cover all 28 unique runtime card definitions with a committed local image;
+  physical copies reuse their definition's image. Keep runtime play independent
+  of the network and preserve the existing accessible fallback if an asset is
+  ever missing or corrupt.
+- Use the pinned OpenMoji 17.0 color set as the sole source. It is a cohesive,
+  production-stable internet library whose graphics are licensed CC BY-SA 4.0.
+  Record title, codepoint, pinned source URL, author/project, license and local
+  filename for every card. Derived/resized artwork remains CC BY-SA 4.0 and the
+  repository must visibly provide the required attribution without implying
+  OpenMoji endorsement.
+- Choose a distinct symbol for every definition, including four escalating
+  Water images and four escalating Fire images. Prefer immediate recognition at
+  small card sizes over photorealism; use rarity framing and the existing card
+  typography to unify the art with TopThis.
+- Store self-contained square PNGs under `apps/web/public/cards` so play never
+  depends on a third-party request. Pin downloads, verify signatures/dimensions,
+  validate one-to-one catalog coverage and keep the acquisition reproducible.
+- Render the authoritative `iconPath` supplied in each public card view. Use
+  contained artwork with a deliberate background treatment so transparent art
+  is not cropped, and retain empty-alt decorative images plus card-name text for
+  screen-reader clarity.
+
+### TERRA TASKS
+
+- Own `apps/web/src/main.tsx`, `apps/web/src/styles.css`,
+  `apps/web/src/main.test.tsx` and focused `apps/web/e2e/**` changes for
+  Enhancement 4. Integrate the authoritative `card.iconPath`, tune artwork
+  containment/background/rarity presentation across hand and challenge cards,
+  and retain reliable fallback behavior.
+- Add component assertions for source-path use, successful art presentation and
+  broken-image fallback. Add a focused Playwright visual/asset assertion that
+  exercises real served artwork on desktop and mobile without making gameplay
+  or tests depend on the internet.
+- Do not edit downloaded assets, attribution/source manifests, scripts, root
+  package files, server/engine/shared code or documentation; do not expose new
+  state, change rules, fetch at runtime, spawn subagents or revert concurrent
+  work.
+- Definition of done: local art is crisp and uncropped in every card context;
+  missing art still degrades accessibly; no card text, controls, pile or six-seat
+  layout regresses.
+- Verification: web test/build/typecheck, scoped lint/format, focused artwork
+  E2E and desktop/mobile screenshot review.
+
+### LUNA TASKS
+
+- Own `content/card-art.sources.json`, `apps/web/public/cards/**`, a small
+  reproducible downloader/validator under `scripts/`, the associated root
+  package scripts, `README.md`, `docs/CARD_CONTENT.md` and a dedicated artwork
+  attribution document for Enhancement 4.
+- Map all 28 runtime IDs to distinct OpenMoji 17.0 color PNGs, download the
+  pinned files locally, and record complete CC BY-SA 4.0 attribution and
+  modification/resizing status. Validate exact catalog/manifest/file parity,
+  PNG signatures, square dimensions and a practical minimum resolution.
+- Do not edit application source/tests/E2E, card rules/data, server/shared/engine
+  code, lockfiles or unrelated documentation; do not use scraped, commercial,
+  AI-generated or ambiguously licensed imagery; do not spawn subagents or
+  revert concurrent work.
+- Definition of done: exactly 28 correctly named local images exist, every image
+  is recognizable and uniquely mapped, acquisition is reproducible, validation
+  fails on any missing/extra/malformed asset, and attribution satisfies the
+  pinned source license.
+- Verification: run the downloader in validation mode, the committed artwork
+  check, root format check and a production web build.
+
+### TOO SMALL TO DELEGATE
+
+- Approve the final 28-image mapping and licensing boundary, review both worker
+  diffs, and reject unclear provenance, runtime third-party requests, misleading
+  imagery or client-authoritative presentation data.
+- Independently inspect a contact sheet plus real desktop/mobile game tables in
+  the built-in Browser, including common/rare/epic/legendary cards and fallback.
+- Run the complete build/test/typecheck/lint/format/Playwright/artwork gate,
+  update this state record, audit asset weight and generated files, commit and
+  push the passing enhancement on `main`.
+
+## Enhancement 4 completion record
+
+### Delegated implementation
+
+- Luna owned acquisition, local assets, reproducibility and attribution. Its
+  first pass delivered all 28 distinct pinned OpenMoji downloads, the Node-core
+  fetch/check script and root commands, but represented entries as codepoint
+  strings instead of the required per-card provenance. A focused second attempt
+  could not safely complete that conversion. After those two incomplete
+  attempts, Sol took over only the manifest expansion, validator enforcement and
+  missing documentation as permitted by the operating instructions.
+- Terra owned the React/CSS/test presentation scope and completed it in one
+  pass. Card faces now consume the authoritative `iconPath`, transparent artwork
+  is contained rather than cropped, rarity-aware backdrops improve contrast,
+  and the existing decorative-image semantics and accessible fallback remain.
+  Component and Playwright coverage prove source use, successful local loading,
+  fallback behavior, and desktop/mobile containment.
+- Sol approved the mapping against OpenMoji's pinned 17.0 metadata, visually
+  reviewed a complete contact sheet and live game, expanded all 28 manifest
+  records, and made validation enforce exact runtime catalog, manifest and file
+  parity plus complete licensing fields.
+
+### Artwork and licensing evidence
+
+- Exactly 28 local PNGs cover the 28 runtime definitions. They use 28 distinct
+  OpenMoji codepoints and 28 distinct file hashes, total 287,983 bytes, and each
+  is a square 618×618 color image. Water and Fire tiers use escalating distinct
+  symbols; every other card has its own recognizable concept image.
+- The files are pinned OpenMoji 17.0 downloads and never require runtime network
+  access. OpenMoji contributors are credited under CC BY-SA 4.0 in a visible
+  attribution document. Every manifest entry records its title, codepoint,
+  pinned source URL, local filename, project, creator, license and modification
+  status; image bytes are unmodified and only local filenames differ.
+- `pnpm.cmd art:fetch` reproduces the committed assets. `pnpm.cmd art:check`
+  rejects missing/extra definitions or files, duplicate sources, incomplete or
+  altered provenance, unpinned URLs, invalid filenames/licenses, malformed PNGs,
+  non-square images and resolutions below 618px.
+
+### Presentation and release evidence
+
+- A live six-seat Browser review showed the Sea challenge image and ten dealt
+  Water, Fire, Sun, Lightning, Ice, Rocket and Gun cards with crisp contained
+  artwork and readable text. All inspected image requests were local, all loaded
+  at 618×618, and the browser reported no warnings or errors. The full contact
+  sheet confirmed all 28 mappings are cohesive and recognizable.
+- The production build and all 101 engine/shared/server/web tests pass. Workspace
+  typecheck, lint, format, deterministic two-through-six-player balance gate,
+  artwork validation and server production smoke all pass.
+- The default-parallel Playwright suite passes 11/11, including the new real
+  local-art desktop/mobile check plus six-seat containment, exits, disconnects,
+  mixed bots, private multiplayer, matchmaking, ratings and responsive rules.

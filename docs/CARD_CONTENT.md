@@ -58,8 +58,19 @@ invariants. `pnpm.cmd balance:check` runs a real-engine, always-first-legal
 simulation over 40 seeds in each player count and enforces pile thresholds.
 Use `pnpm.cmd balance:check -- --seeds=200` for release evidence.
 
-## Artwork replacement
+## Artwork and provenance
 
-Artwork belongs at `apps/web/public/cards/<definition-id>.png` as a square
-1024x1024 PNG. Missing artwork falls back to the deterministic accessible card
-presentation.
+Every definition has a local square 618×618 PNG under
+`apps/web/public/cards/<definition-id>.png`. The shipped set is pinned OpenMoji
+17.0 color artwork under CC BY-SA 4.0; the images are byte-for-byte downloads
+whose filenames were changed to the runtime definition IDs. Complete per-card
+titles, codepoints, URLs, creator/project credit, license and modification
+status are recorded in `content/card-art.sources.json` and summarized in
+`docs/CARD_ART_ATTRIBUTION.md`.
+
+Run `pnpm.cmd art:check` to enforce exact runtime-catalog, manifest and file
+parity; unique sources; required attribution; PNG signatures; square dimensions;
+and a minimum 618px resolution. `pnpm.cmd art:fetch` reproducibly refreshes the
+local files from the pinned URLs. Replacement assets must retain those checks
+and licensing records. Missing artwork still falls back to the deterministic
+accessible card presentation.

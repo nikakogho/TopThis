@@ -1,0 +1,288 @@
+{
+  "catalog": "OpenMoji color 17.0",
+  "sourceBase": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618",
+  "projectUrl": "https://openmoji.org/",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "cards": {
+    "water.common": {
+      "title": "droplet",
+      "codepoint": "1F4A7",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F4A7.png",
+      "localFile": "apps/web/public/cards/water.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "water.rare": {
+      "title": "potable water",
+      "codepoint": "1F6B0",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F6B0.png",
+      "localFile": "apps/web/public/cards/water.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "water.epic": {
+      "title": "water wave",
+      "codepoint": "1F30A",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F30A.png",
+      "localFile": "apps/web/public/cards/water.epic.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "water.legendary": {
+      "title": "tsunami",
+      "codepoint": "E09B",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/E09B.png",
+      "localFile": "apps/web/public/cards/water.legendary.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "fire.common": {
+      "title": "fire",
+      "codepoint": "1F525",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F525.png",
+      "localFile": "apps/web/public/cards/fire.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "fire.rare": {
+      "title": "firecracker",
+      "codepoint": "1F9E8",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F9E8.png",
+      "localFile": "apps/web/public/cards/fire.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "fire.epic": {
+      "title": "wild fire",
+      "codepoint": "E08A",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/E08A.png",
+      "localFile": "apps/web/public/cards/fire.epic.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "fire.legendary": {
+      "title": "structural fire",
+      "codepoint": "E089",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/E089.png",
+      "localFile": "apps/web/public/cards/fire.legendary.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "gun.rare": {
+      "title": "water pistol",
+      "codepoint": "1F52B",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F52B.png",
+      "localFile": "apps/web/public/cards/gun.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "rust.common": {
+      "title": "nut and bolt",
+      "codepoint": "1F529",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F529.png",
+      "localFile": "apps/web/public/cards/rust.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "dirt.common": {
+      "title": "landslide",
+      "codepoint": "1F6D8",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F6D8.png",
+      "localFile": "apps/web/public/cards/dirt.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "mouse.common": {
+      "title": "mouse",
+      "codepoint": "1F401",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F401.png",
+      "localFile": "apps/web/public/cards/mouse.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "cat.common": {
+      "title": "cat",
+      "codepoint": "1F408",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F408.png",
+      "localFile": "apps/web/public/cards/cat.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "dog.common": {
+      "title": "dog",
+      "codepoint": "1F415",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F415.png",
+      "localFile": "apps/web/public/cards/dog.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "cloud.common": {
+      "title": "cloud",
+      "codepoint": "2601",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/2601.png",
+      "localFile": "apps/web/public/cards/cloud.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "sun.rare": {
+      "title": "sun",
+      "codepoint": "2600",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/2600.png",
+      "localFile": "apps/web/public/cards/sun.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "rocket.epic": {
+      "title": "rocket",
+      "codepoint": "1F680",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F680.png",
+      "localFile": "apps/web/public/cards/rocket.epic.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "sea.epic": {
+      "title": "sea level rise",
+      "codepoint": "E2D0",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/E2D0.png",
+      "localFile": "apps/web/public/cards/sea.epic.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "ice.common": {
+      "title": "ice",
+      "codepoint": "1F9CA",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F9CA.png",
+      "localFile": "apps/web/public/cards/ice.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "lightning.rare": {
+      "title": "high voltage",
+      "codepoint": "26A1",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/26A1.png",
+      "localFile": "apps/web/public/cards/lightning.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "plant.common": {
+      "title": "potted plant",
+      "codepoint": "1FAB4",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1FAB4.png",
+      "localFile": "apps/web/public/cards/plant.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "rock.common": {
+      "title": "rock",
+      "codepoint": "1FAA8",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1FAA8.png",
+      "localFile": "apps/web/public/cards/rock.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "paper.common": {
+      "title": "page facing up",
+      "codepoint": "1F4C4",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F4C4.png",
+      "localFile": "apps/web/public/cards/paper.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "scissors.rare": {
+      "title": "scissors",
+      "codepoint": "2702",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/2702.png",
+      "localFile": "apps/web/public/cards/scissors.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "sponge.common": {
+      "title": "sponge",
+      "codepoint": "1F9FD",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F9FD.png",
+      "localFile": "apps/web/public/cards/sponge.common.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "magnet.rare": {
+      "title": "magnet",
+      "codepoint": "1F9F2",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F9F2.png",
+      "localFile": "apps/web/public/cards/magnet.rare.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "tornado.legendary": {
+      "title": "tornado",
+      "codepoint": "1F32A",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/1F32A.png",
+      "localFile": "apps/web/public/cards/tornado.legendary.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    },
+    "meteor.legendary": {
+      "title": "comet",
+      "codepoint": "2604",
+      "sourceUrl": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/17.0.0/color/618x618/2604.png",
+      "localFile": "apps/web/public/cards/meteor.legendary.png",
+      "project": "OpenMoji 17.0",
+      "creator": "OpenMoji contributors",
+      "license": "CC BY-SA 4.0",
+      "modifications": "None; downloaded PNG bytes are unchanged and only the local filename differs."
+    }
+  }
+}

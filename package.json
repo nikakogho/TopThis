@@ -13,7 +13,9 @@
     "typecheck": "pnpm -r build && pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "art:fetch": "node scripts/card-art.mjs fetch",
+    "art:check": "node scripts/card-art.mjs check"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

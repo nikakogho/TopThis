@@ -330,6 +330,8 @@ describe('TopThis practice UI', () => {
     const fire = screen.getByRole('button', { name: 'Epic Fire. Playable' });
     const image = fire.querySelector('img');
     expect(image).not.toBeNull();
+    expect(image).toHaveAttribute('src', '/cards/fire.epic.png');
+    expect(image).toHaveAttribute('alt', '');
     fireEvent.error(image!);
     expect(fire).toHaveTextContent('◆');
     expect(fire).toHaveTextContent('Abstract fallback artwork for Epic Fire');

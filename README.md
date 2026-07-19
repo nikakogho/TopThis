@@ -127,18 +127,23 @@ state and a Socket.IO adapter; it is not implemented here.
 The full rule and system decisions live in [`docs/GAME_RULES.md`](docs/GAME_RULES.md)
 and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Artwork replacement
+## Card artwork
 
-Card art belongs at `apps/web/public/cards/<definition-id>.png`, for example
-`apps/web/public/cards/water.common.png`. Each replacement must be a square
-1024x1024 PNG named with the existing definition ID. Do not use copyrighted
-commercial card-game artwork.
+All 28 definitions ship with local 618×618 OpenMoji 17.0 color artwork, so a
+game never loads images from the internet. The pinned source and complete
+per-card provenance live in
+[`content/card-art.sources.json`](content/card-art.sources.json); licensing and
+credit are in
+[`docs/CARD_ART_ATTRIBUTION.md`](docs/CARD_ART_ATTRIBUTION.md). Run
+`pnpm.cmd art:check` to verify exact catalog/manifest/file parity, distinct
+sources, attribution fields, PNG signatures and dimensions. `pnpm.cmd art:fetch`
+reproduces every committed download from its pinned source URL.
 
-Missing or invalid artwork never blocks startup, tests, production builds or
-play. The client renders a deterministic accessible fallback containing the
-card's name, rarity and abstract symbol. After replacing art, run the web tests,
-production build and a desktop/mobile visual check. See
-[`docs/CARD_CONTENT.md`](docs/CARD_CONTENT.md) for the full content workflow.
+Replacement art belongs at `apps/web/public/cards/<definition-id>.png` and must
+remain square, at least 618×618, correctly licensed, and fully represented in
+the source manifest. Missing or invalid artwork never blocks play: the client
+retains its deterministic accessible fallback. After any replacement, run the
+art check, web tests, production build and desktop/mobile visual review.
 
 ## Troubleshooting
 

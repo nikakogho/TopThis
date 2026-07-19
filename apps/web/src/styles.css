@@ -595,18 +595,31 @@ main {
   place-items: center;
   overflow: hidden;
   border-radius: 0.5rem;
-  background: radial-gradient(circle, #353142, #191721);
+  border: 1px solid #ffffff14;
+  background: radial-gradient(circle at 50% 42%, #454052, #211d2b 68%), #191721;
 }
 .art img {
   width: 100%;
   height: 5.3rem;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  image-rendering: auto;
+  filter: drop-shadow(0 0.25rem 0.3rem #0008);
 }
 .fallback-symbol {
   font-size: 2.6rem;
   color: #45d7eb;
   text-shadow: 0 0 18px currentColor;
+}
+.card.rare .art {
+  background: radial-gradient(circle at 50% 42%, #253e62, #171d32 70%);
+}
+.card.epic .art {
+  background: radial-gradient(circle at 50% 42%, #573a78, #24182f 70%);
+}
+.card.legendary .art {
+  background: radial-gradient(circle at 50% 42%, #6d4822, #2b1d13 70%);
 }
 .card-face strong {
   font-size: 0.92rem;
