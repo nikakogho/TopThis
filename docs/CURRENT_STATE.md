@@ -1768,3 +1768,82 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 - The Render owner must set **Auto-Deploy: On Commit** in the service settings and
   choose **Deploy latest commit** once. The new public bundle will then be checked
   for health, assets and a real Socket.IO game before completion.
+
+## Enhancement 7 delegation ledger
+
+### SOL DECISIONS
+
+- Treat the supplied laptop screenshot as evidence that CSS viewport height can
+  exceed 900px on a scaled/high-density display while the full-height desktop
+  composition still does not fit. The compact laptop composition must therefore
+  cover ordinary laptop aspect ratios, not rely on a 900px height cutoff alone.
+- Preserve the roomy desktop treatment only where viewport geometry genuinely
+  has enough room. Keep the existing phone layout, gameplay, networking and card
+  semantics unchanged.
+- Add regression coverage matching the supplied screenshot's approximately 4:3
+  content viewport as well as the existing 720p, 768p and 900p laptop cases.
+
+### TERRA TASKS
+
+- None. This correction is limited to responsive CSS and geometry coverage.
+
+### LUNA TASKS
+
+- Own `apps/web/src/styles.css` and `apps/web/e2e/practice.spec.ts` for
+  Enhancement 7. Broaden/refine the compact desktop trigger so the entire board,
+  actions and all ten cards fit without scrolling on the user's tall/scaled
+  laptop viewport, while preserving phone and genuinely roomy desktop layouts.
+- Add a focused regression viewport representative of the screenshot. Do not
+  edit React behavior, server/shared/engine code, deployment files or docs; do
+  not spawn subagents or revert concurrent work.
+- Definition of done: all ten hand cards and the complete board/actions are
+  visible simultaneously with no document or hand scroll at the new regression
+  size and all existing responsive assertions still pass.
+- Verification: focused practice Playwright laptop/mobile tests, scoped
+  Prettier, and `git diff --check`.
+
+### TOO SMALL TO DELEGATE
+
+- Review the breakpoint/aspect-ratio choice and visually inspect the supplied
+  laptop geometry plus existing mobile and desktop layouts.
+- Run the full release gate, update this record, commit, push and verify the
+  public deployment once Render serves the new bundle.
+
+## Enhancement 7 completion record
+
+### Responsive correction
+
+- The compact desktop composition now activates either below 901px viewport
+  height or at laptop-like aspect ratios up to 8:5. This covers scaled and
+  high-density laptop browsers whose CSS viewport can be taller than the old
+  height-only breakpoint while leaving wide 16:9 large desktops on the roomy
+  presentation.
+- The regression suite now includes 1824x1245, matching the supplied screenshot's
+  page geometry, in addition to 1280x720, 1366x768 and 1440x900.
+
+### Delegated delivery and review
+
+- `luna_worker | scaled laptop responsive CSS and geometry regression | passed;
+aspect-ratio trigger and 1824x1245 coverage added | focused Playwright 2/2,
+scoped Prettier and git diff check passed`.
+- Sol reviewed the breakpoint behavior and inspected the compiled production UI
+  at 1824x1245. The full 400px board, selection/actions and all ten approximately
+  110x168px cards end at 673px inside a 1245px viewport with zero document or hand
+  overflow. Card artwork, names, rarity and legal state remain readable.
+
+### Verification evidence
+
+- All 101 engine/shared/server/web tests pass. Workspace typecheck, lint,
+  formatting, deterministic balance analysis, artwork validation and production
+  online smoke pass.
+- Default-parallel Playwright passes 12/12, including the new screenshot-sized
+  laptop regression plus existing phone, artwork, six-seat, exit/disconnect,
+  bot and multiplayer coverage. Built-in Browser inspection confirms the
+  screenshot-sized compiled table has every card visible without scrolling.
+
+### Deployment state
+
+- Before this correction, the public service was healthy and serving the prior
+  laptop bundle `index-DnEhGyYD.js`, confirming the user's screenshot exposed a
+  real responsive gap rather than a stale Render deployment. Push this passing
+  correction and verify Render serves the new CSS bundle before closing the phase.

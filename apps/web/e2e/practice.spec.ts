@@ -251,6 +251,7 @@ test('fits the active table and ten-card rail on laptop heights', async ({ page 
     { width: 1280, height: 720 },
     { width: 1366, height: 768 },
     { width: 1440, height: 900 },
+    { width: 1824, height: 1245 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto('/');
