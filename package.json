@@ -3,9 +3,15 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11"
+  },
   "scripts": {
     "dev": "pnpm --parallel --filter @topthis/web --filter @topthis/server dev",
     "build": "pnpm -r build",
+    "start": "pnpm --filter @topthis/server start",
+    "smoke:production": "node scripts/production-online-smoke.mjs",
     "test": "pnpm -r build && pnpm -r test",
     "test:unit": "pnpm -r build && pnpm -r test",
     "test:e2e": "playwright test",

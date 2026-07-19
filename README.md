@@ -71,6 +71,8 @@ logs are written under ignored Playwright output directories.
 
 ## Production
 
+For the zero-cost public MVP, follow the [Koyeb hosting guide](docs/HOSTING.md).
+
 Build both applications, set production mode, then start the one Node process:
 
 ```sh

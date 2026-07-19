@@ -5,13 +5,14 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Complete — Enhancement 4 release gate passed
+- Active phase: Deployment 1 — deployment-ready, awaiting Koyeb account authorization
 - Last completed phase: Enhancement 4 — complete licensed card artwork
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: none
+- External blockers: Koyeb account sign-in/authorization and confirmation of the
+  prefilled free deployment; no credentials or billing are required by the app.
 
 ## Phase 0 delegation ledger
 
@@ -1331,3 +1332,128 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 - The default-parallel Playwright suite passes 11/11, including the new real
   local-art desktop/mobile check plus six-seat containment, exits, disconnects,
   mixed bots, private multiplayer, matchmaking, ratings and responsive rules.
+
+## Deployment 1 delegation ledger
+
+### SOL DECISIONS
+
+- Deploy the existing single authoritative Fastify/Socket.IO process rather
+  than splitting the static client and backend. It already serves the production
+  Vite build, API and WebSocket endpoint from one origin, avoiding CORS, sticky
+  sessions and a second hosting bill.
+- Choose Koyeb's free Web Service for the public MVP: one 512 MB/0.1 vCPU
+  instance, native Node 24 and pnpm support, WebSockets, managed HTTPS and a
+  public `koyeb.app` URL for $0. The free instance sleeps after one hour without
+  traffic and wakes within seconds; connected players keep the service active.
+- Accept ephemeral SQLite only for this zero-cost MVP. Guest profiles, ratings
+  and leaderboard history may reset after a deployment, sleep/reschedule or
+  platform maintenance; the browser already recovers invalid saved profiles.
+  Active matches are intentionally in-memory and likewise cannot survive a
+  process replacement. State this limitation prominently rather than implying
+  durability.
+- Keep exactly one instance because live lobby/match state is process-local and
+  SQLite is single-writer. Do not add horizontal scaling, runtime secrets,
+  external databases, CORS, client/server URL splitting or a serverless rewrite.
+- Pin Node 24, add explicit production build/start entry points and a one-click
+  public-repository Koyeb deployment configured for the free Frankfurt region,
+  HTTP port 8000, `/health`, `NODE_ENV=production`, and an ephemeral database
+  path. The only blocking external action is the user's Koyeb account creation
+  or login and confirmation of the free deployment.
+- Document the durable upgrade path without implementing it: a Fly.io 256 MB
+  shared machine plus 1 GB volume is approximately $2.17/month before small
+  usage-dependent network charges and preserves SQLite across deploys.
+
+### TERRA TASKS
+
+- Own root production runtime metadata/scripts, a focused production-online
+  smoke test under `scripts/`, and any narrowly required server startup test for
+  Deployment 1. Add explicit Node 24/start behavior and prove the built client,
+  `/health`, guest creation and a real Socket.IO Practice session work from one
+  production process on a platform-supplied port with ephemeral SQLite.
+- Preserve server authority, same-origin production serving, graceful shutdown,
+  existing package boundaries and all game behavior. Do not edit hosting docs,
+  add cloud SDKs/databases/secrets, weaken auth/privacy, spawn subagents or
+  revert concurrent work.
+- Definition of done: a clean checkout can install, build and start through the
+  root commands expected by the Koyeb Node buildpack; the smoke test fails on a
+  missing client, unhealthy endpoint, failed guest API, failed WebSocket or
+  unclean shutdown.
+- Verification: root build, new deployment smoke, server production smoke,
+  typecheck, scoped lint/format and existing server tests.
+
+### LUNA TASKS
+
+- Own `README.md`, a new concise hosting/deployment guide under `docs/`, an
+  optional `Procfile` or `.koyebignore` if justified, and no application code.
+  Add a correctly encoded one-click Koyeb button for the public repository with
+  the decided free-instance settings, exact manual fallback steps, health URL,
+  wake/cold-start expectations, and explicit ephemeral-data warning.
+- Include a compact current-cost comparison using official sources: Koyeb free,
+  Render free, Railway Hobby, Render durable and Fly.io durable. Explain why the
+  selected one-service/same-origin shape is cheaper and safer for this app.
+- Do not claim that an external deployment exists before it does, do not add
+  credentials, cloud SDKs or persistence changes, do not edit code/tests/root
+  package metadata, spawn subagents or revert concurrent work.
+- Definition of done: a user can click one link, authorize/sign in, confirm the
+  prefilled free service and obtain the public URL; limitations and the later
+  durable upgrade are unambiguous.
+- Verification: validate all links/URL parameters, root format check and compare
+  instructions to the committed production commands.
+
+### TOO SMALL TO DELEGATE
+
+- Review current provider documentation/pricing, approve the cost/reliability
+  tradeoff, validate the generated deploy URL and integrate both worker diffs.
+- Run the full release gate and a local production browser flow. After the user
+  completes the external Koyeb account action, verify the public health page,
+  static assets, guest identity and a real multi-browser Socket.IO game.
+- Keep this state record accurate, audit secrets/artifacts, commit and push the
+  deployment-ready phase. Do not mark the public launch complete until the live
+  URL passes verification.
+
+## Deployment 1 readiness record
+
+### Provider and runtime outcome
+
+- The deployment target is one Koyeb free Web Service. Koyeb supplies the
+  lowest exposed port as `PORT`, so the existing platform-aware server listens
+  correctly on the preconfigured HTTP port 8000. Managed HTTPS and WebSocket
+  forwarding keep the React client, `/api/*`, `/health` and Socket.IO on one
+  public origin.
+- The root package now pins Node 24/pnpm 11 compatibility and provides explicit
+  `build` and `start` commands for the Node buildpack. The deployment uses
+  `NODE_ENV=production` and disposable `/tmp/topthis.sqlite` storage.
+- `docs/HOSTING.md` contains a one-click, public-repository deployment link and
+  exact manual settings. The service must remain at one instance; free local
+  storage and active in-memory games are deliberately non-durable.
+
+### Delegated delivery and review
+
+- Terra added the production runtime metadata and a production-online smoke
+  that launches the compiled process on a dynamically selected platform-style
+  port and temporary SQLite database. It verifies the built client, a local PNG,
+  `/health`, guest creation, a recipient-safe real Socket.IO practice session,
+  graceful `SIGTERM` handling and cleanup.
+- Luna added the public hosting guide and README handoff, including the Koyeb
+  button, manual fallback, cold-start/data-loss warnings and current alternatives
+  for free or durable hosting. Sol reviewed the settings against Koyeb's current
+  Node, environment-variable, WebSocket, service and storage documentation.
+
+### Verification evidence
+
+- The production listener smoke passes against the same compiled process and
+  same-origin topology that Koyeb will run.
+- All 101 engine/shared/server/web tests pass. Workspace typecheck, lint,
+  formatting, deterministic balance analysis and artwork validation pass.
+- Playwright passes 11/11 multiplayer and responsive flows. A separate built-in
+  Browser review loaded the compiled production client from Fastify, created a
+  one-bot practice game over Socket.IO and rendered the connected table, local
+  card artwork, playable hand, pile, timer and exit control correctly.
+
+### Remaining external action
+
+- The code is ready to push, but the public launch is not complete. A Koyeb
+  account owner must sign in and confirm the prefilled free service. After Koyeb
+  returns its public `.koyeb.app` URL, `/health`, static assets, guest identity
+  and a real two-browser Socket.IO game still need to be verified before this
+  phase can be marked complete.
