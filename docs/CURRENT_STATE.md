@@ -5,15 +5,14 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Enhancement 5 — code complete, awaiting one-time Render auto-deploy enablement
+- Active phase: Enhancement 6 — release gate passed, awaiting Render deployment
 - Last completed phase: Deployment 1b — live at `https://topthis.onrender.com`
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: the already-created Render service retained Auto-Deploy
-  `Off`; its owner must change it to `On Commit` and deploy the latest `main`
-  commit once. Future connected-branch pushes will then deploy automatically.
+- External blockers: none; the prior mobile bundle is live and Render is expected
+  to auto-deploy this `main` push.
 
 ## Phase 0 delegation ledger
 
@@ -1670,3 +1669,96 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
   **Auto-Deploy: On Commit**, save it, and choose **Deploy latest commit**. Future
   `main` pushes will then deploy automatically. Live health, assets and Socket.IO
   will be rechecked after `b576d6b` appears at `https://topthis.onrender.com`.
+
+## Enhancement 6 delegation ledger
+
+### SOL DECISIONS
+
+- Treat common laptop viewports as height-constrained play surfaces, not as tall
+  desktop pages. At 1280x720, 1366x768 and 1440x900, the header, entire board,
+  challenge/timer/pile, local/opponent scores, action controls and all ten hand
+  cards must be visible simultaneously without document or hand scrolling.
+- Use a laptop-only compact breakpoint based primarily on viewport height. Lay
+  the ten-card hand in one dense row, reduce board/card vertical dimensions and
+  hide only secondary card prose when needed. Preserve card name, art, rarity,
+  legal/selected state and a useful click target.
+- Keep the existing compact iPhone layout and roomy large-desktop layout intact.
+  Do not change gameplay, networking, audio behavior or card information sources.
+- Validate the three target laptop sizes plus existing mobile and large desktop
+  geometry, then verify the compiled production UI visually before release.
+
+### TERRA TASKS
+
+- None. This phase changes responsive CSS and geometry coverage only; it has no
+  React behavior, rules, networking, persistence or server work to delegate.
+
+### LUNA TASKS
+
+- Own `apps/web/src/styles.css` and focused `apps/web/e2e/practice.spec.ts`
+  changes for Enhancement 6. Add the height-constrained laptop layout and prove
+  all ten cards, board, timer and actions fit together without page/hand scroll
+  at 1280x720, 1366x768 and 1440x900.
+- Preserve the <=420px iPhone layout, desktop 1280x900 screenshot intent,
+  six-seat containment, artwork, selected/legal clarity and reduced-motion
+  behavior. Do not edit React/unit/server/shared/engine/docs/render config, spawn
+  subagents or revert concurrent work.
+- Definition of done: every target laptop viewport contains all ten nonzero card
+  hit boxes, challenge and controls; no card/seat/header overlap or scroll is
+  required; large desktop and mobile tests remain green.
+- Verification: focused practice Playwright tests for laptop/mobile/artwork/
+  six-seat flows, scoped Prettier and `git diff --check`.
+
+### TOO SMALL TO DELEGATE
+
+- Review the responsive breakpoint and information-density tradeoffs, inspect
+  real 720p/768p screenshots and reject technically-contained but unreadable UI.
+- Run all tests, typecheck, lint, formatting, balance, artwork, production smoke
+  and default-parallel Playwright gates; perform built-in Browser review.
+- Update this state record, commit and push the passing enhancement, then verify
+  the automatically deployed public bundle at `https://topthis.onrender.com`.
+
+## Enhancement 6 completion record
+
+### Responsive layout outcome
+
+- Laptop-height screens from 721px wide through 900px tall now use a compact
+  active-game composition: a 25rem tabletop, normal-height selection/actions and
+  all ten hand cards in one row. Card art, name, rarity and legal/selected styling
+  remain visible; only secondary description and legality prose are hidden in
+  this dense presentation.
+- The compact grid uses intrinsic/non-stretching tracks. This keeps the 720p
+  screen inside its viewport and prevents 900px-tall screens from inflating the
+  selection bar or adding blank height inside cards. The existing <=420px mobile
+  layout and roomy >900px desktop layout remain separate.
+
+### Delegated delivery and review
+
+- Luna implemented the height breakpoint, ten-card rail, geometry test and
+  intentionally refreshed the tracked practice-table visual baseline. Its first
+  contained version stretched auto grid tracks at 900px; Sol rejected that visual
+  result and the second pass fixed the stretching.
+- Sol found that the initial laptop assertion combined header/seat/challenge and
+  card elements before slicing ten entries, so it measured non-card heights as
+  card hit boxes. The corrected test queries all ten hand buttons directly and
+  enforces both useful minimums and a 190px maximum plus compact controls.
+
+### Visual and release evidence
+
+- At 1280x720, all ten cards render in one approximately 110x168px row ending
+  above the viewport bottom; the complete board, three opponent seats, local
+  score, challenge, timer, pile, Play and Skip are simultaneously visible. At
+  1366x768 the same geometry fits, and at 1440x900 cards remain 110x168px with a
+  58px selection bar rather than stretching.
+- Built-in Browser and compiled-production screenshots confirm readable artwork,
+  names and rarities with no overlap or scroll. The three laptop geometry cases,
+  existing iPhone cases, large desktop baseline, artwork and six-seat checks pass.
+- All 101 engine/shared/server/web tests pass. Workspace typecheck, lint,
+  formatting, deterministic balance analysis, artwork validation and production
+  online smoke pass. Default-parallel Playwright passes 12/12, including the new
+  laptop-height flow and all existing multiplayer/mobile behavior.
+
+### Deployment state
+
+- The passing change is ready to commit and push to `main`. The public bundle at
+  `https://topthis.onrender.com` will be polled for the new hashed assets and then
+  exercised before this phase is marked complete.

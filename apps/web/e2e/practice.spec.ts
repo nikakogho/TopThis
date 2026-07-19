@@ -39,7 +39,7 @@ test('upgrades an anonymous practice connection before hosting multiplayer', asy
       rowCounts: [...rows.values()],
     };
   });
-  expect(handGeometry).toEqual({ fits: true, rowCounts: [5, 5] });
+  expect(handGeometry).toEqual({ fits: true, rowCounts: [10] });
 
   const playable = page.getByRole('button', { name: /Playable/ }).first();
   await playable.click();
@@ -243,5 +243,59 @@ test('contains a six-seat practice table on desktop and mobile', async ({ page }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
+  }
+});
+
+test('fits the active table and ten-card rail on laptop heights', async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1366, height: 768 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Practice' }).click();
+    await page.getByLabel('Display name').fill('Laptop Ada');
+    await page.getByLabel('Bot opponents').selectOption('3');
+    await page.getByRole('button', { name: 'Start practice' }).click();
+    const hand = page.getByRole('region', { name: 'Your hand' });
+    const table = page.getByRole('region', { name: 'Game table' });
+    await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
+    await expect(page.getByRole('region', { name: 'Table challenge' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const cardBoxes = [...document.querySelectorAll<HTMLElement>('[data-hand-card]')].map((el) =>
+        el.getBoundingClientRect(),
+      );
+      const selection = document
+        .querySelector<HTMLElement>('.selection-bar')!
+        .getBoundingClientRect();
+      return {
+        pageFits:
+          document.documentElement.scrollWidth <= innerWidth &&
+          document.documentElement.scrollHeight <= innerHeight,
+        handFits:
+          document.querySelector<HTMLElement>('.hand')!.scrollWidth <=
+          document.querySelector<HTMLElement>('.hand')!.clientWidth,
+        usefulCards:
+          cardBoxes.length === 10 &&
+          cardBoxes.every(
+            (box) =>
+              box.width >= 36 &&
+              box.height >= 60 &&
+              box.height <= 190 &&
+              box.right <= innerWidth &&
+              box.bottom <= innerHeight + 2,
+          ),
+        compactControls: selection.height <= 64,
+      };
+    });
+    expect(geometry).toEqual({
+      pageFits: true,
+      handFits: true,
+      usefulCards: true,
+      compactControls: true,
+    });
+    await expect(table).toBeVisible();
   }
 });
