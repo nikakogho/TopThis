@@ -5,13 +5,15 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Enhancement 5 — release gate passed, awaiting Render deployment
+- Active phase: Enhancement 5 — code complete, awaiting one-time Render auto-deploy enablement
 - Last completed phase: Deployment 1b — live at `https://topthis.onrender.com`
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: none
+- External blockers: the already-created Render service retained Auto-Deploy
+  `Off`; its owner must change it to `On Commit` and deploy the latest `main`
+  commit once. Future connected-branch pushes will then deploy automatically.
 
 ## Phase 0 delegation ledger
 
@@ -1660,7 +1662,11 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 
 ### Deployment state
 
-- The passing change is ready to commit and push. Render is configured with
-  `autoDeployTrigger: commit`; after the first configuration sync, commits on the
-  connected `main` branch deploy automatically to `https://topthis.onrender.com`.
-  Live health, assets and Socket.IO will be rechecked after this commit appears.
+- Commit `b576d6b` is pushed and `render.yaml` now specifies
+  `autoDeployTrigger: commit`. The existing service continued serving its prior
+  JavaScript bundle for more than three minutes, proving that its previously
+  applied `Off` setting was not automatically resynchronized from this commit.
+- The Render service owner must make the one-time dashboard change to
+  **Auto-Deploy: On Commit**, save it, and choose **Deploy latest commit**. Future
+  `main` pushes will then deploy automatically. Live health, assets and Socket.IO
+  will be rechecked after `b576d6b` appears at `https://topthis.onrender.com`.
