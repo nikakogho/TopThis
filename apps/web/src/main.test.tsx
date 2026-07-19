@@ -255,7 +255,7 @@ describe('TopThis practice UI', () => {
     expect(socketMock.emitted.find(({ event }) => event === 'practice:leave')?.args[0]).toEqual({});
   });
 
-  it('animates a real pile toward the winner and toggles sound', () => {
+  it('animates a real pile toward the winner without a sound setting', () => {
     openMatch();
     const result = {
       ...playingView,
@@ -266,9 +266,7 @@ describe('TopThis practice UI', () => {
     act(() => socketMock.handlers.get('practice:state')?.forEach((handler) => handler(result)));
     expect(screen.getByTestId('collecting-pile')).toHaveClass('collect-to-opponent-1');
     expect(screen.getByTestId('collecting-pile').querySelectorAll('span')).toHaveLength(3);
-    const toggle = screen.getByRole('button', { name: 'Sound on' });
-    fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: 'Sound off' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Sound (on|off)/ })).toBeNull();
   });
 
   it('plays one quiet cue for each authoritative round result', async () => {

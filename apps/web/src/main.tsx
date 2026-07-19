@@ -151,7 +151,6 @@ function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>();
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState('');
-  const [soundOn, setSoundOn] = useState(true);
   const audioRef = useRef<AudioContext | undefined>(undefined);
   const lastRoundRef = useRef<string | undefined>(undefined);
   const rulesTriggerRef = useRef<HTMLButtonElement>(null);
@@ -246,7 +245,7 @@ function App() {
     )
       return;
     lastRoundRef.current = `${view.matchId}:${view.stateVersion}`;
-    if (!soundOn) return;
+    unlockAudio();
     try {
       const ctx = audioRef.current;
       if (!ctx) return;
@@ -261,7 +260,7 @@ function App() {
     } catch {
       // Audio is decorative; unsupported APIs and autoplay failures are harmless.
     }
-  }, [soundOn, view?.matchId, view?.phase, view?.roundResult, view?.stateVersion]);
+  }, [view?.matchId, view?.phase, view?.roundResult, view?.stateVersion]);
 
   useEffect(() => {
     const token = localStorage.getItem('topthis.guestToken');
@@ -1229,16 +1228,6 @@ function App() {
             <strong>{view.pileCount}</strong>
             <span>cards in pile</span>
             <small>{view.deckCount} left in deck</small>
-            <button
-              className="sound-toggle secondary"
-              aria-pressed={soundOn}
-              onClick={() => {
-                unlockAudio();
-                setSoundOn((value) => !value);
-              }}
-            >
-              {soundOn ? 'Sound on' : 'Sound off'}
-            </button>
           </div>
         </section>
         <article

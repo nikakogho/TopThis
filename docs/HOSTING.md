@@ -13,8 +13,8 @@ the Vite build plus Fastify/API/Socket.IO process on one same-origin instance.
 2. Approve the prefilled Blueprint from `render.yaml`. It creates one Free Web
    Service, uses `pnpm build` to build, and runs
    `NODE_ENV=production pnpm start` on the Render `PORT`. The Blueprint sets
-   `TOPTHIS_DATABASE_PATH=/tmp/topthis.sqlite`; automatic deploys are disabled,
-   so updates are deployed manually from Render after reviewing a new commit.
+   `TOPTHIS_DATABASE_PATH=/tmp/topthis.sqlite`; the connected `main` branch
+   auto-deploys new commits from Render.
 3. Choose the Free plan and click **Apply**. No app secret or payment method is
    required for this MVP.
 4. Open the generated `https://<service>.onrender.com` URL and verify

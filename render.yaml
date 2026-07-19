@@ -5,7 +5,7 @@ services:
     region: frankfurt
     plan: free
     numInstances: 1
-    autoDeployTrigger: off
+    autoDeployTrigger: commit
     buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: NODE_ENV=production pnpm start
     healthCheckPath: /health

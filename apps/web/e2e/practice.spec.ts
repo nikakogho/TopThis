@@ -124,16 +124,80 @@ test('seats two-, three-, and four-player games around one table', async ({ page
 });
 
 test('keeps a ten-card table hand within a mobile viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Practice' }).click();
-  await page.getByLabel('Display name').fill('Ada');
-  await page.getByLabel('Bot opponents').selectOption('3');
-  await page.getByRole('button', { name: 'Start practice' }).click();
-  const hand = page.getByRole('region', { name: 'Your hand' });
-  await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
-  expect(await hand.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 375, height: 667 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Practice' }).click();
+    await page.getByLabel('Display name').fill('Ada');
+    await page.getByLabel('Bot opponents').selectOption('3');
+    await page.getByRole('button', { name: 'Start practice' }).click();
+    const hand = page.getByRole('region', { name: 'Your hand' });
+    await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
+    expect(
+      await hand.evaluate(
+        (element) =>
+          element.scrollWidth <= element.clientWidth &&
+          element.scrollHeight <= element.clientHeight,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= innerWidth &&
+          document.documentElement.scrollHeight <= innerHeight,
+      ),
+    ).toBe(true);
+    const geometry = await hand.locator('[data-hand-card]').evaluateAll((cards) =>
+      cards.map((card) => {
+        const box = card.getBoundingClientRect();
+        return {
+          width: box.width,
+          height: box.height,
+          inside:
+            box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        };
+      }),
+    );
+    expect(geometry.every((card) => card.width >= 24 && card.height >= 36 && card.inside)).toBe(
+      true,
+    );
+    await expect(page.getByRole('region', { name: 'Table challenge' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible();
+    const overlap = await page.evaluate(() => {
+      const challenge = document
+        .querySelector<HTMLElement>('.challenge-card')!
+        .getBoundingClientRect();
+      const seats = [...document.querySelectorAll<HTMLElement>('.opponent-seat, .local-seat')].map(
+        (el) => el.getBoundingClientRect(),
+      );
+      const exit = document.querySelector<HTMLElement>('.match-exit')!.getBoundingClientRect();
+      const eyebrow = document
+        .querySelector<HTMLElement>('.table-header .eyebrow')!
+        .getBoundingClientRect();
+      return {
+        challengeReadable: challenge.width > 40 && challenge.height > 50,
+        seatOverlap: seats.some(
+          (seat) =>
+            !(
+              challenge.right < seat.left ||
+              challenge.left > seat.right ||
+              challenge.bottom < seat.top ||
+              challenge.top > seat.bottom
+            ),
+        ),
+        exitOverlap: !(
+          exit.right < eyebrow.left ||
+          exit.left > eyebrow.right ||
+          exit.bottom < eyebrow.top ||
+          exit.top > eyebrow.bottom
+        ),
+      };
+    });
+    expect(overlap).toEqual({ challengeReadable: true, seatOverlap: false, exitOverlap: false });
+  }
 });
 
 test('serves contained local card artwork on desktop and mobile', async ({ page }) => {

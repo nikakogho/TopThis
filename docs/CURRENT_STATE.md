@@ -5,14 +5,13 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Deployment 1b — Render-ready, awaiting account authorization
-- Last completed phase: Enhancement 4 — complete licensed card artwork
+- Active phase: Enhancement 5 — release gate passed, awaiting Render deployment
+- Last completed phase: Deployment 1b — live at `https://topthis.onrender.com`
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: Render account sign-in/authorization and confirmation of
-  the prefilled free Blueprint; no credentials or billing are required by the app.
+- External blockers: none
 
 ## Phase 0 delegation ledger
 
@@ -1551,3 +1550,117 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
   the GitHub repository and approve the prefilled free Blueprint. The launch is
   not complete until the resulting `onrender.com` root, `/health`, static assets,
   guest identity and a real two-browser Socket.IO game pass public verification.
+
+## Enhancement 5 delegation ledger
+
+### SOL DECISIONS
+
+- Treat the iPhone game screen as a fixed single-viewport play surface. During
+  active play, the header/status, opponent seats, challenge pile, local score,
+  full hand and action controls must fit within the visible viewport without page
+  scrolling at supported iPhone portrait sizes and safe-area insets.
+- Replace the mobile two-row card grid with a compact poker-inspired hand rail:
+  all cards remain simultaneously visible and individually tappable, using
+  controlled overlap/fanning and reduced card detail where necessary. Preserve
+  full readable card faces on tablet/desktop and do not introduce horizontal
+  scrolling as a substitute.
+- Keep accessibility and game clarity: every hand card remains a real labeled
+  button with legal/selected/disabled state; the top challenge card, timer, pile
+  count and Play/Skip controls remain visible. Respect reduced motion.
+- Remove the sound toggle and its mute state. Existing effects play whenever the
+  browser permits audio; do not add autoplay media, persistence or a new setting.
+- Enable Render deployment on each commit to the connected `main` branch. The
+  user owns this repository and explicitly prefers automatic updates, so this
+  overrides the generic public-template recommendation to disable auto-deploys.
+- Validate locally at iPhone portrait viewports and then against the supplied
+  public URL after the updated commit is manually redeployed on Render.
+
+### TERRA TASKS
+
+- Own `apps/web/src/main.tsx`, `apps/web/src/main.test.tsx` and `render.yaml` for
+  Enhancement 5.
+  Remove the sound toggle/state and make existing effects always enabled. Add any
+  minimal semantic/class hooks needed by the compact mobile hand, preserving all
+  server-authoritative actions, keyboard selection and accessible labels.
+- Update focused component tests to prove the toggle is absent, collection/play
+  effects remain wired, all cards render and selection/play behavior is intact.
+  Set the existing Render service to auto-deploy connected-branch commits. Do
+  not edit CSS, Playwright files, server/shared/engine code or docs; do not spawn
+  subagents or revert concurrent work.
+- Definition of done: no sound control or mutable sound setting remains; effects
+  still trigger best-effort; card interaction semantics do not regress.
+- Verification: web unit tests, web build/typecheck, scoped lint/Prettier and
+  `git diff --check`.
+
+### LUNA TASKS
+
+- Own `apps/web/src/styles.css`, focused `apps/web/e2e/practice.spec.ts` changes
+  and the small Render wording update in `docs/HOSTING.md` for Enhancement 5.
+  Implement the compact mobile full-viewport table
+  and poker-inspired overlapping/fanned ten-card hand without horizontal or
+  vertical page scrolling during active play.
+- Cover at least 390x844 and 375x667 portrait viewports, safe-area spacing,
+  visible challenge/timer/actions/all ten cards, individual card hit targets and
+  existing desktop/six-seat containment. State that pushes to the connected
+  `main` branch auto-deploy. Do not change React/TypeScript unit code, game
+  behavior, server/shared/engine code or other docs; do not spawn subagents or
+  revert concurrent work.
+- Definition of done: all ten cards, board and controls are visible together on
+  both target viewports; cards remain tappable and selected state is apparent;
+  no page or hand-region scrolling is required.
+- Verification: focused Playwright mobile tests, existing six-seat/artwork E2E,
+  scoped Prettier and `git diff --check`.
+
+### TOO SMALL TO DELEGATE
+
+- Review current mobile geometry, approve the responsive layout tradeoffs and
+  integrate the non-overlapping React/test and CSS/E2E contributions.
+- Run all tests, typecheck, lint, formatting, balance, artwork, production smoke
+  and default-parallel Playwright gates; inspect desktop and both target iPhone
+  viewports in the built-in Browser.
+- Update this state record, commit and push the passing enhancement, wait for
+  Render's automatic deployment, then verify the live URL and public Socket.IO
+  flow.
+
+## Enhancement 5 completion record
+
+### Delegated implementation and review
+
+- Terra removed the mutable sound preference and its control while preserving
+  best-effort Web Audio cues, graceful unsupported/autoplay behavior, card
+  selection, keyboard actions and server-authoritative commands. Component tests
+  prove no sound setting remains and each authoritative result produces at most
+  one cue. Terra also enabled Render's connected-branch commit auto-deploy.
+- Luna replaced the narrow-screen multi-row full-size card grid with a compact
+  five-across, two-row hand rail. At 420px and below, the game becomes a fixed
+  `100dvh` play surface with compact seats, challenge card, status, pile count,
+  selection/actions and all ten cards visible together. It added iPhone safe-area
+  padding and removed the obsolete sound-control CSS.
+- Sol rejected the first technically-contained layout because seats obscured the
+  challenge and the header crowded Exit. The refined pass uses compact score/name
+  chips and clear non-overlapping challenge/header geometry. Sol then corrected
+  safe-area padding to live inside the fixed-height table's border box, preventing
+  real notched-device insets from adding document height.
+
+### Visual and verification evidence
+
+- At 375x667, the document is exactly 375x667 with no page or hand scrolling.
+  All ten hand buttons are simultaneously visible at approximately 70x98px. The
+  challenge card is unobstructed at approximately 83x117px; opponent and local
+  chips sit outside it; Exit and the mode label do not overlap; Play and Skip are
+  visible. The 390x844 geometry also passes.
+- Desktop Browser review remains visually unchanged apart from removal of the
+  sound button. The challenge/pile, timer, local/opponent seats, full card faces,
+  selection bar and actions remain readable.
+- All 101 engine/shared/server/web tests pass. Workspace typecheck, lint,
+  formatting, deterministic balance analysis, artwork validation and production
+  online smoke pass. Default-parallel Playwright passes 11/11, including both
+  iPhone viewports, ten-card bounds, challenge/seat/header non-overlap, artwork,
+  six-seat containment, exits, disconnects, mixed bots and multiplayer flows.
+
+### Deployment state
+
+- The passing change is ready to commit and push. Render is configured with
+  `autoDeployTrigger: commit`; after the first configuration sync, commits on the
+  connected `main` branch deploy automatically to `https://topthis.onrender.com`.
+  Live health, assets and Socket.IO will be rechecked after this commit appears.
