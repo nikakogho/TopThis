@@ -5,14 +5,15 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Enhancement 6 — release gate passed, awaiting Render deployment
+- Active phase: Enhancement 6 — code complete, awaiting Render deployment
 - Last completed phase: Deployment 1b — live at `https://topthis.onrender.com`
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
   the unsigned `pnpm.ps1` shim; root package scripts remain cross-platform.
-- External blockers: none; the prior mobile bundle is live and Render is expected
-  to auto-deploy this `main` push.
+- External blockers: the live Render service did not auto-deploy the Enhancement 6
+  `main` push; its owner must enable **Auto-Deploy: On Commit** and deploy the
+  latest commit once.
 
 ## Phase 0 delegation ledger
 
@@ -1759,6 +1760,11 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 
 ### Deployment state
 
-- The passing change is ready to commit and push to `main`. The public bundle at
-  `https://topthis.onrender.com` will be polled for the new hashed assets and then
-  exercised before this phase is marked complete.
+- Commit `ce38507` is pushed to `main`, but the public service continued serving
+  the prior `index-C11w6RXn.js` bundle for more than four minutes instead of the
+  new `index-DnEhGyYD.js` bundle. This confirms the existing Render service still
+  has automatic deploys disabled even though `render.yaml` requests commit-based
+  deploys.
+- The Render owner must set **Auto-Deploy: On Commit** in the service settings and
+  choose **Deploy latest commit** once. The new public bundle will then be checked
+  for health, assets and a real Socket.IO game before completion.
