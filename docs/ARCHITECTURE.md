@@ -21,19 +21,25 @@ serialization belongs in `@topthis/shared` and the server layer so one player's
 hand can never be sent to another client.
 
 The match state machine is `playing -> round_result -> playing|completed`.
-Gameplay and internal round-advance commands include match/version/turn
-expectations as applicable. An accepted command increments state version and is
-logged once; invalid, duplicate and stale commands do not mutate state. Replaying
-the accepted log from the same creation input produces byte-equivalent stable
-JSON.
+Gameplay, server-only player removal and internal round-advance commands include
+match/version/turn expectations as applicable. An accepted command increments
+state version and is logged once; invalid, duplicate and stale commands do not
+mutate state. Replaying the accepted log from the same creation input produces
+byte-equivalent stable JSON.
+
+Private matches may add server-owned bot seats up to six total players. Bot
+decisions use engine-produced legal IDs and enter the same serialized command
+queue as humans and timeouts. Human exits and disconnects become deterministic
+server-only removal commands; clients cannot select the player being removed.
 
 ## Matchmaking and persistence
 
 Authenticated matchmaking is an in-memory FIFO queue with two-player pairing.
 It reuses the private active-match runner rather than introducing a second
 rules path. Recipient views remain isolated: only the local hand and legal IDs
-are sent, while reconnecting with the same guest token reclaims the existing
-seat during the grace window.
+are sent. A simultaneously replacing socket with the same token safely takes
+over before the older socket closes; a genuine disconnect immediately removes
+the lobby or active-match seat.
 
 The SQLite repository extends guest rows with rating and win/loss/tie/game
 statistics and adds `completed_matches` plus `completed_match_players`. Match

@@ -22,6 +22,7 @@ const { app, io } = await createServer({
   databasePath: process.env.TOPTHIS_DATABASE_PATH,
   private: {
     seed: optionalNumber('TOPTHIS_E2E_SEED'),
+    botDelayMs: optionalNumber('TOPTHIS_E2E_BOT_DELAY_MS'),
     disconnectGraceMs: optionalNumber('TOPTHIS_E2E_DISCONNECT_GRACE_MS'),
     roundResultDelayMs: optionalNumber('TOPTHIS_E2E_ROUND_DELAY_MS'),
     targetScore: optionalNumber('TOPTHIS_E2E_TARGET_SCORE'),

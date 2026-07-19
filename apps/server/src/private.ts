@@ -16,8 +16,10 @@ import {
   LobbyReadyIntentSchema,
   LobbySettingsIntentSchema,
   LobbyViewSchema,
+  LobbyClosedViewSchema,
   PrivateMatchAckSchema,
   PrivateMatchLeaveIntentSchema,
+  PrivateMatchExitIntentSchema,
   PrivateMatchViewSchema,
   PrivatePlayIntentSchema,
   PrivateSkipIntentSchema,
@@ -30,10 +32,16 @@ import {
 import type { Socket } from 'socket.io';
 const catalog = validateCardDefinitions(cards as CardDefinition[]),
   alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
-  defaults: LobbySettings = { playerCount: 2, targetScore: 50, turnDurationSeconds: 20 };
+  defaults: LobbySettings = {
+    playerCount: 2,
+    botCount: 0,
+    targetScore: 50,
+    turnDurationSeconds: 20,
+  };
 const id = (p: string) => `${p}${randomUUID().replaceAll('-', '')}`;
 type Seat = {
   guest: Guest;
+  isBot?: boolean;
   ready: boolean;
   socket?: Socket;
   abandoned?: boolean;
@@ -56,6 +64,8 @@ type Active = {
   settings: LobbySettings;
   mode: 'private' | 'matchmaking';
   completed?: boolean;
+  humanIds: Set<string>;
+  completionPlayers: Map<string, { score: number; forfeited?: boolean }>;
 };
 export interface PrivateOptions {
   seed?: number;
@@ -63,12 +73,13 @@ export interface PrivateOptions {
   roundResultDelayMs?: number;
   targetScore?: number;
   turnDurationMs?: number;
+  botDelayMs?: number;
   onComplete?: (input: {
     matchId: string;
     mode: 'private' | 'matchmaking';
     seed: number;
     commandLog: MatchCommand[];
-    players: Array<{ guestId: string; score: number }>;
+    players: Array<{ guestId: string; score: number; forfeited?: boolean }>;
   }) => void;
 }
 export class PrivateService {
@@ -86,6 +97,7 @@ export class PrivateService {
       roundResultDelayMs: o.roundResultDelayMs ?? 1500,
       targetScore: o.targetScore ?? 0,
       turnDurationMs: o.turnDurationMs ?? 0,
+      botDelayMs: o.botDelayMs ?? 650,
       onComplete: o.onComplete,
     };
   }
@@ -119,14 +131,24 @@ export class PrivateService {
   private emitLobby(l: Lobby) {
     for (const s of l.seats) s.socket?.emit('lobby:state', this.lv(l));
   }
+  private closeLobby(l: Lobby) {
+    this.lobbies.delete(l.code);
+    for (const seat of l.seats) {
+      const timer = l.timers.get(seat.guest.id);
+      if (timer) clearTimeout(timer);
+      this.guestLobby.delete(seat.guest.id);
+      seat.socket?.emit('lobby:closed', LobbyClosedViewSchema.parse({ code: l.code }));
+    }
+    l.timers.clear();
+  }
   private remove(l: Lobby, s: Seat) {
     const t = l.timers.get(s.guest.id);
     if (t) clearTimeout(t);
     l.timers.delete(s.guest.id);
     l.seats = l.seats.filter((x) => x !== s);
     this.guestLobby.delete(s.guest.id);
-    if (l.hostGuestId === s.guest.id && l.seats[0]) l.hostGuestId = l.seats[0].guest.id;
-    if (!l.seats.length) this.lobbies.delete(l.code);
+    if (l.hostGuestId === s.guest.id) this.closeLobby(l);
+    else if (!l.seats.length) this.lobbies.delete(l.code);
     else this.emitLobby(l);
   }
   create(s: Socket, raw: unknown) {
@@ -151,7 +173,8 @@ export class PrivateService {
     if (this.guestLobby.has(g.id) || this.guestMatch.has(g.id) || this.queued.has(g.id))
       throw Error('ALREADY_ACTIVE');
     const l = this.lobbies.get(code);
-    if (!l || l.seats.length >= l.settings.playerCount) throw Error('LOBBY_UNAVAILABLE');
+    if (!l || l.seats.length >= l.settings.playerCount - l.settings.botCount)
+      throw Error('LOBBY_UNAVAILABLE');
     l.seats.push({ guest: g, ready: false, socket: s });
     this.guestLobby.set(g.id, code);
     this.emitLobby(l);
@@ -171,7 +194,7 @@ export class PrivateService {
     const { l, g } = this.lobbySeat(s);
     if (l.hostGuestId !== g.id) throw Error('NOT_HOST');
     const settings = LobbySettingsIntentSchema.parse(r).settings;
-    if (settings.playerCount < l.seats.length) throw Error('LOBBY_UNAVAILABLE');
+    if (settings.playerCount - settings.botCount < l.seats.length) throw Error('LOBBY_UNAVAILABLE');
     l.settings = settings;
     l.seats.forEach((x) => (x.ready = false));
     this.emitLobby(l);
@@ -180,12 +203,20 @@ export class PrivateService {
   start(s: Socket) {
     const { l, g } = this.lobbySeat(s);
     if (l.hostGuestId !== g.id) throw Error('NOT_HOST');
-    if (l.seats.length !== l.settings.playerCount || l.seats.some((x) => !x.ready || !x.socket))
+    if (
+      l.seats.length !== l.settings.playerCount - l.settings.botCount ||
+      l.seats.some((x) => !x.ready || !x.socket)
+    )
       throw Error('NOT_READY');
     for (const t of l.timers.values()) clearTimeout(t);
     this.lobbies.delete(l.code);
     const settings = { ...l.settings, targetScore: this.o.targetScore || l.settings.targetScore };
-    const state = this.startActive(l.seats, settings, 'private');
+    const bots: Seat[] = Array.from({ length: settings.botCount }, (_, index) => ({
+      guest: { id: id('bot'), displayName: `Bot ${index + 1}` },
+      isBot: true,
+      ready: true,
+    }));
+    const state = this.startActive([...l.seats, ...bots], settings, 'private');
     return { view: this.lv(l), matchId: state.matchId };
   }
   private startActive(seats: Seat[], settings: LobbySettings, mode: 'private' | 'matchmaking') {
@@ -202,11 +233,15 @@ export class PrivateService {
       queue: Promise.resolve(),
       settings,
       mode,
+      humanIds: new Set(seats.filter((seat) => !seat.isBot).map((seat) => seat.guest.id)),
+      completionPlayers: new Map(
+        seats.filter((seat) => !seat.isBot).map((seat) => [seat.guest.id, { score: 0 }] as const),
+      ),
     };
     this.matches.set(state.matchId, a);
     for (const x of seats) {
       this.guestLobby.delete(x.guest.id);
-      this.guestMatch.set(x.guest.id, state.matchId);
+      if (!x.isBot) this.guestMatch.set(x.guest.id, state.matchId);
     }
     this.schedule(a);
     this.emit(a);
@@ -248,6 +283,7 @@ export class PrivateService {
         seats,
         {
           playerCount: 2,
+          botCount: 0,
           targetScore: this.o.targetScore || defaults.targetScore,
           turnDurationSeconds: this.o.turnDurationMs
             ? Math.max(5, Math.ceil(this.o.turnDurationMs / 1000))
@@ -282,10 +318,10 @@ export class PrivateService {
         return {
           id: p.id,
           displayName: s.guest.displayName,
-          isBot: false,
+          isBot: !!s.isBot,
           capturedCardCount: p.capturedCardCount,
           handCount: p.hand.length,
-          connected: !!s.socket,
+          connected: !!s.isBot || !!s.socket,
           abandoned: !!s.abandoned,
         };
       }),
@@ -377,18 +413,101 @@ export class PrivateService {
       }
     });
   }
+  private bot(a: Active, playerId: string, expectedStateVersion: number, expectedTurnId: string) {
+    if (a.state.stateVersion !== expectedStateVersion || a.state.turnId !== expectedTurnId) return;
+    const legal = getLegalCardInstanceIds(a.state, playerId);
+    const player = a.state.players.find((entry) => entry.id === playerId)!;
+    const rank = (instanceId: string) => {
+      const card = player.hand.find((entry) => entry.id === instanceId)!;
+      const definition = a.state.definitions.find((entry) => entry.id === card.definitionId)!;
+      const special =
+        definition.id === 'meteor.legendary'
+          ? 10_000
+          : definition.id === 'tornado.legendary'
+            ? 5_000
+            : 0;
+      return (
+        special + definition.beatsDefinitionIds.length * 100 + (100 - definition.masterPoolCopies)
+      );
+    };
+    const command: MatchCommand = legal.length
+      ? {
+          type: 'play',
+          commandId: id('bot'),
+          matchId: a.state.matchId,
+          expectedStateVersion,
+          expectedTurnId,
+          playerId,
+          // Preserve scarce, broad and special counters deterministically.
+          cardInstanceId: [...legal].sort(
+            (left, right) => rank(left) - rank(right) || left.localeCompare(right),
+          )[0]!,
+        }
+      : {
+          type: 'skip',
+          commandId: id('bot'),
+          matchId: a.state.matchId,
+          expectedStateVersion,
+          expectedTurnId,
+          playerId,
+        };
+    this.submit(a, command);
+  }
+  exit(s: Socket, raw: unknown): Promise<void> {
+    PrivateMatchExitIntentSchema.parse(raw);
+    const g = this.guest(s);
+    const a = this.matches.get(this.guestMatch.get(g.id) ?? '');
+    const seat = a?.seats.get(g.id);
+    if (!a || !seat || seat.socket?.id !== s.id) throw Error('NO_SESSION');
+    if (a.state.phase === 'completed') throw Error('MATCH_ACTIVE');
+    return this.depart(a, g.id);
+  }
+  private depart(a: Active, guestId: string): Promise<void> {
+    return new Promise((resolve) => {
+      a.queue = a.queue.then(() => {
+        const current = a.state.players.find((player) => player.id === guestId);
+        if (!current) {
+          resolve();
+          return;
+        }
+        a.completionPlayers.set(guestId, { score: current.capturedCardCount, forfeited: true });
+        const result = applyCommand(a.state, {
+          type: 'removePlayer',
+          commandId: id('departure'),
+          matchId: a.state.matchId,
+          expectedStateVersion: a.state.stateVersion,
+          playerId: guestId,
+        });
+        if (result.accepted) {
+          a.state = result.state;
+          a.seats.delete(guestId);
+          this.guestMatch.delete(guestId);
+          this.afterTransition(a);
+        }
+        resolve();
+      });
+    });
+  }
   private afterTransition(a: Active) {
     this.schedule(a);
     this.emit(a);
     if (a.state.phase === 'completed' && !a.completed) {
       a.completed = true;
-      this.o.onComplete?.({
-        matchId: a.state.matchId,
-        mode: a.mode,
-        seed: a.state.seed,
-        commandLog: a.state.commandLog,
-        players: a.state.players.map((p) => ({ guestId: p.id, score: p.capturedCardCount })),
-      });
+      if (![...a.seats.values()].some((seat) => seat.isBot))
+        this.o.onComplete?.({
+          matchId: a.state.matchId,
+          mode: a.mode,
+          seed: a.state.seed,
+          commandLog: a.state.commandLog,
+          players: [...a.completionPlayers].map(([guestId, prior]) => {
+            const current = a.state.players.find((player) => player.id === guestId);
+            return {
+              guestId,
+              score: current?.capturedCardCount ?? prior.score,
+              forfeited: prior.forfeited,
+            };
+          }),
+        });
     }
   }
   private schedule(a: Active) {
@@ -413,6 +532,11 @@ export class PrivateService {
       v = a.state.stateVersion,
       t = a.state.turnId,
       seat = a.seats.get(player)!;
+    if (seat.isBot) {
+      a.turnEndsAt = Date.now() + this.o.botDelayMs;
+      a.timer = setTimeout(() => this.bot(a, player, v, t), this.o.botDelayMs);
+      return;
+    }
     const delay = seat.abandoned
       ? 0
       : this.o.turnDurationMs || a.settings.turnDurationSeconds * 1000;
@@ -441,28 +565,13 @@ export class PrivateService {
     const l = this.lobbies.get(this.guestLobby.get(g.id) ?? ''),
       ls = l?.seats.find((x) => x.guest.id === g.id);
     if (l && ls && ls.socket?.id === socket.id) {
-      ls.socket = undefined;
-      const existing = l.timers.get(g.id);
-      if (existing) clearTimeout(existing);
-      l.timers.set(
-        g.id,
-        setTimeout(() => this.remove(l, ls), this.o.disconnectGraceMs),
-      );
-      this.emitLobby(l);
+      if (l.hostGuestId === g.id) this.closeLobby(l);
+      else this.remove(l, ls);
     }
     const a = this.matches.get(this.guestMatch.get(g.id) ?? ''),
       ms = a?.seats.get(g.id);
     if (a && ms && ms.socket?.id === socket.id) {
-      ms.socket = undefined;
-      if (ms.grace) clearTimeout(ms.grace);
-      ms.grace = setTimeout(() => {
-        if (!ms.socket) {
-          ms.abandoned = true;
-          ms.grace = undefined;
-          if (a.state.phase === 'playing' && a.state.turnPlayerId === g.id) this.schedule(a);
-        }
-      }, this.o.disconnectGraceMs);
-      this.emit(a);
+      void this.depart(a, g.id);
     }
   }
   reconnect(s: Socket) {

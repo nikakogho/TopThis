@@ -493,6 +493,102 @@ describe('round and match transitions', () => {
 });
 
 describe('command authority, races and replay', () => {
+  it.each([2, 3, 4, 5, 6])('creates deterministic %s-player matches', (count) => {
+    const state = make(count, 17);
+    expect(state.players).toHaveLength(count);
+    expect(state.deck).toHaveLength(200 - count * 10 - 1);
+  });
+
+  it('removes a current leader deterministically and replays the departure', () => {
+    const creation = input(3, 0, 999);
+    let state = createMatch(creation);
+    const removed = state.leaderId;
+    const result = applyCommand(state, {
+      type: 'removePlayer',
+      commandId: 'remove-leader',
+      matchId: state.matchId,
+      expectedStateVersion: state.stateVersion,
+      playerId: removed,
+    });
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    state = result.state;
+    expect(state.players.some((entry) => entry.id === removed)).toBe(false);
+    expect(state.challenge?.ownerId).toBe(state.leaderId);
+    expect(JSON.stringify(replayMatch(creation, state.commandLog))).toBe(JSON.stringify(state));
+  });
+
+  it('completes with the sole survivor after a deterministic removal', () => {
+    const state = make(2, 0);
+    const removed = state.players.find((entry) => entry.id !== state.leaderId)!;
+    const result = applyCommand(state, {
+      type: 'removePlayer',
+      commandId: 'remove-last-opponent',
+      matchId: state.matchId,
+      expectedStateVersion: state.stateVersion,
+      playerId: removed.id,
+    });
+    expect(result).toMatchObject({
+      accepted: true,
+      state: { phase: 'completed', winnerIds: [state.leaderId] },
+    });
+  });
+
+  it('transfers a round-result award when its winner departs', () => {
+    let state = make(3, 0);
+    state = applyAccepted(state, skipCommand(state, 'pass-one'));
+    state = applyAccepted(state, skipCommand(state, 'pass-two'));
+    expect(state.phase).toBe('round_result');
+    const winner = state.roundWinnerId!;
+    const award = state.roundResult!.pileCount;
+    const result = applyCommand(state, {
+      type: 'removePlayer',
+      commandId: 'remove-round-winner',
+      matchId: state.matchId,
+      expectedStateVersion: state.stateVersion,
+      playerId: winner,
+    });
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    expect(result.state.roundResult?.winnerId).not.toBe(winner);
+    expect(result.state.roundResult?.pileCount).toBe(award);
+    expect(
+      result.state.players.find((entry) => entry.id === result.state.roundWinnerId)
+        ?.capturedCardCount,
+    ).toBe(award);
+  });
+
+  it('does not overwrite the pile award when a current player departure ends a round', () => {
+    let state = make(3, 0);
+    state = applyAccepted(state, skipCommand(state, 'prior-pass'));
+    const result = applyCommand(state, {
+      type: 'removePlayer',
+      commandId: 'remove-current',
+      matchId: state.matchId,
+      expectedStateVersion: state.stateVersion,
+      playerId: state.turnPlayerId!,
+    });
+    expect(result).toMatchObject({
+      accepted: true,
+      state: { phase: 'round_result', roundResult: { pileCount: 1 } },
+    });
+  });
+
+  it('resets prior passes when the current pile leader departs', () => {
+    let state = make(3, 0);
+    state = applyAccepted(state, skipCommand(state, 'prior-pass'));
+    const result = applyCommand(state, {
+      type: 'removePlayer',
+      commandId: 'remove-leader-after-pass',
+      matchId: state.matchId,
+      expectedStateVersion: state.stateVersion,
+      playerId: state.leaderId,
+    });
+    expect(result).toMatchObject({
+      accepted: true,
+      state: { phase: 'playing', passedPlayerIds: [] },
+    });
+  });
   it('rejects illegal cards and cards outside the acting hand without mutation', () => {
     const state = make(2, 0);
     const before = structuredClone(state);

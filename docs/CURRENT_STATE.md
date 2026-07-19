@@ -5,8 +5,8 @@ counters, and the last successful play takes the pile.
 
 ## Status
 
-- Active phase: Complete — Enhancement 2 release gate passed
-- Last completed phase: Enhancement 2 — authenticated authoritative multiplayer
+- Active phase: Complete — Enhancement 3 release gate passed
+- Last completed phase: Enhancement 3 — departures, mixed bots and physical pile
 - Phase branch: `main`; completed phases are pushed after their passing gate.
 - Runtime: Node.js 24.18.0 and pnpm 11.14.0
 - Windows note: use `pnpm.cmd` when a local PowerShell execution policy blocks
@@ -1048,3 +1048,155 @@ web tests, focused mobile Rules E2E, scoped lint/format and Browser review`
 - Built-in Browser review created a fresh local guest, opened an authenticated
   private lobby without an auth error, left it, and confirmed the landing page
   visibly retained `Playing as Browser Ada` with a change-player action.
+
+## Enhancement 3 delegation ledger
+
+### SOL DECISIONS
+
+- Support two through six total players in every game mode. In a private lobby,
+  `playerCount` is the total seat count and `botCount` reserves zero through
+  five of those seats; at least one human host is always required. Matchmaking
+  remains a two-human queue and Practice offers one through five bot opponents.
+- Keep every departure authoritative. A lobby host leaving or disconnecting
+  closes the lobby and returns all remaining guests to a recoverable landing
+  state; a non-host is removed immediately. Same-token socket replacement must
+  remain safe by installing the replacement before the old socket disconnects.
+- Add a deterministic engine `removePlayer` command for active human departures.
+  The departing hand returns to the end of the deck, their public seat and score
+  leave the match, turn/pass state is repaired clockwise, and one remaining
+  player completes as the winner. If the current pile leader leaves, the next
+  clockwise player inherits leadership; if the round winner leaves during the
+  result pause, that pile award transfers to the next clockwise player. The
+  server alone may construct this command.
+- Private-match bots are server-owned seats with opaque engine IDs. Their legal
+  cards come from the engine, their modest deterministic strategy preserves
+  scarce/broad counters, and bot commands use the same serialized authoritative
+  command path as timeouts and human moves. Bots expose no hand data.
+- Add a prominent, visually polished top-left Exit control during every match.
+  Practice waits for acknowledged server cleanup; an active network match sends
+  a strict acknowledged exit event before leaving. Disconnects use the same
+  server departure path. Completed results continue to use completed-match
+  release.
+- Make the pile feel physical with bounded, deterministic per-layer rotation,
+  offsets, depth and spring-like play motion while keeping the authoritative top
+  challenge card unobscured, accessible and stable under reduced motion.
+- Extra improvement selected for this phase: an accessible custom confirmation
+  dialog for active exits, clearly warning that the seat cannot be rejoined.
+  This prevents accidental forfeits without weakening explicit departures.
+
+### TERRA TASKS
+
+- Own `packages/game-engine/**`, `packages/shared/**`, `apps/server/**` and their
+  focused tests for Enhancement 3. Implement the agreed deterministic
+  `removePlayer` rules, expand all player-count boundaries to six, add private
+  lobby bot settings/seats and serialized server bot turns, strict active-match
+  exit plus lobby-closed contracts/events, immediate lobby/match disconnect
+  cleanup, and host-disconnect lobby termination.
+- Preserve recipient privacy, host authorization, token replacement safety,
+  seeded tests and completion/rating idempotency. A client must never submit a
+  player ID, bot move or removal command. Do not edit web/docs/root files, move
+  rules outside the engine/server, spawn subagents or revert concurrent work.
+- Definition of done: 2–6 player engine creation/replay works; departures repair
+  every phase and complete at one survivor; mixed human/bot private matches run
+  to completion; exited/disconnected humans disappear from every recipient
+  view; host lobby departure closes it for all; existing auth/privacy/forgery
+  coverage remains green.
+- Verification: engine/shared/server build, test and typecheck; scoped lint and
+  format; real Socket.IO integration tests for host closure, member removal,
+  active exit/disconnect, socket replacement and a mixed six-seat match.
+
+### LUNA TASKS
+
+- Own `apps/web/src/**` and focused `apps/web/e2e/**` for Enhancement 3. Add
+  player-count options through six, private-lobby bot-count controls and clear
+  capacity/readiness copy; render bot seats from authoritative match views and
+  recover from lobby-closed events.
+- Add a polished fixed top-left match Exit control, the accessible confirmation
+  dialog selected as the extra improvement, acknowledged network exit handling,
+  and immediate local Practice exit. Keep the dialog keyboard/focus safe and
+  show server failures without discarding the live match.
+- Enhance the existing pile layers with deterministic rotations/offsets/depth
+  and spring-like play motion while keeping the top challenge face fully
+  readable and honoring `prefers-reduced-motion`. Extend seat geometry for up
+  to five opponents without document or table overflow.
+- Add component tests for lobby bot settings, lobby closure, confirmed/cancelled
+  exit, exit failure retention, six-player seats and pile transforms. Extend
+  Playwright for mixed human/bot start, visible bot turns, active exit/removal,
+  host-disconnect closure, six-seat containment and confirmation accessibility.
+  Do not edit engine/shared/server/docs/root files, invent client rules, expose
+  private data, spawn subagents or revert concurrent work.
+- Definition of done: users can deliberately exit any match; remaining clients
+  update correctly; mixed lobbies are understandable; two through six seats and
+  the physical pile are attractive, readable, responsive and accessible.
+- Verification: web test/build/typecheck, scoped lint/format, focused new E2E
+  flows and the full default-parallel Playwright suite.
+
+### TOO SMALL TO DELEGATE
+
+- Review and integrate departure semantics across engine replay, server timers,
+  rating completion, recipient views and UI acknowledgements; reject ghost
+  seats, client authority or ambiguous host transfer.
+- Independently verify same-token replacement, 2–6 creation, a six-seat mixed
+  match, pile readability, exit confirmation, member removal and host closure
+  with live clients and the built-in Browser.
+- Run the complete gate, update this state record and user documentation, audit
+  generated files/secrets, commit and push the passing enhancement on `main`.
+
+## Enhancement 3 completion record
+
+### Delegated implementation
+
+- Terra owned the engine, shared-contract and server-authority scope. Its first
+  pass established player removal, six-player boundaries, lobby closure and
+  private bot orchestration but exposed completion and round-transfer gaps in
+  review. Its second pass fixed double completion, leader/pass repair,
+  round-result award transfer, sole-survivor completion and forfeit-aware
+  all-human ratings, then passed the focused engine/shared/server suites.
+- Luna owned the web presentation and browser-test scope. Two passes delivered
+  the responsive six-seat table, mixed-lobby controls, top-left Exit UI,
+  confirmation dialog, physical pile and component coverage, but omitted the
+  required mixed-bot and host-disconnect browser flows. After the two incomplete
+  attempts, Sol took over only those remaining integration tests and final UX
+  review as permitted by the operating instructions.
+- Sol integrated the authoritative contracts, made Practice exit wait for
+  server cleanup, completed five- and six-opponent geometry, added deterministic
+  pile settling, verified all departure/rating edge cases, and retained the
+  original privacy and same-token replacement boundaries.
+
+### Authority and behavior evidence
+
+- Lobbies and matches support two through six total seats. Private games may mix
+  one or more humans with up to five opaque server bots; Practice offers one
+  through five bots. Matchmaking remains two humans. Mixed-bot games are
+  intentionally unranked, while human-only forfeits record the departing player
+  as losing regardless of the visible score at departure.
+- A lobby host exit or disconnect closes the lobby and releases every guest. A
+  non-host exit or disconnect removes that player immediately. Active-match
+  removal is an engine command constructed only by the server: hands return to
+  the deck, turns and leaders repair clockwise, round awards transfer safely,
+  and a sole survivor completes the match. Replacement sockets are installed
+  before old same-token sockets disconnect, preventing false removal.
+- The client exposes no removal/player-ID authority and receives no opponent or
+  bot hand. Server bots submit ordinary serialized commands derived from the
+  same legal-card view used by the engine. The top-left Exit control waits for a
+  strict acknowledgement, and the added focus-trapped confirmation warns that
+  an active seat cannot be rejoined; Escape cancels and restores Exit focus.
+
+### Presentation and release evidence
+
+- The pile now accumulates bounded deterministic rotations, offsets and depth,
+  with a spring-like settling motion and a clearly unobscured top challenge;
+  reduced-motion preferences remain honored. Five opponents remain contained
+  around the table at desktop and mobile sizes.
+- The deterministic engine passes 35/35 tests, shared contracts 5/5, server
+  integration 30/30 plus production smoke, and the web client 31/31: 101 tests
+  total. Workspace production build, typecheck, lint and format checks pass.
+- The balance simulation covers 40 seeded games at every size from two through
+  six players. The established two-to-four-player gate remains at a 5.38-card
+  mean and 4-card median; all sizes produce a 6.85-card mean and 5-card median.
+- The default-parallel Playwright suite passes 10/10, including active network
+  exit/removal, host-disconnect lobby closure, one-human/five-bot progression,
+  six-seat desktop/mobile containment, private multiplayer, matchmaking and
+  ratings. Built-in Browser review also completed a real mixed match, confirmed
+  the physical pile and bot status, and verified dialog focus, Escape recovery,
+  acknowledged exit and return home.

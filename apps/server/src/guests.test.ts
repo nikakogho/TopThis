@@ -91,6 +91,35 @@ describe('ratings and leaderboard', () => {
     });
     db.close();
   });
+  it('ranks a forfeiter below every active player despite a higher captured score', () => {
+    const players = [
+      { guestId: 'forfeit', score: 99, forfeited: true, rating: 1000 },
+      { guestId: 'active', score: 1, rating: 1000 },
+    ];
+    expect(calculateElo(players)).toEqual({ forfeit: -12, active: 12 });
+    const dir = mkdtempSync(join(tmpdir(), 'topthis-forfeit-'));
+    paths.push(dir);
+    const repo = new SqliteGuestRepository(join(dir, 'forfeit.sqlite'));
+    const forfeit = repo.create('Forfeit').guest;
+    const active = repo.create('Active').guest;
+    const input = {
+      matchId: 'm-forfeit',
+      mode: 'private' as const,
+      seed: 1,
+      commandLog: [],
+      players: [
+        { guestId: forfeit.id, score: 99, forfeited: true },
+        { guestId: active.id, score: 1 },
+      ],
+    };
+    const first = repo.completeMatch(input);
+    expect(repo.completeMatch(input)).toEqual(first);
+    expect(repo.leaderboard(1, 2).entries.map((entry) => entry.guestId)).toEqual([
+      active.id,
+      forfeit.id,
+    ]);
+    repo.close();
+  });
 });
 
 describe('SqliteGuestRepository', () => {

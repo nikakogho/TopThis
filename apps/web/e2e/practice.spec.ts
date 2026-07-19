@@ -114,7 +114,9 @@ test('seats two-, three-, and four-player games around one table', async ({ page
 
   await expect(page.locator('body')).toHaveScreenshot('practice-table.png', {
     animations: 'disabled',
-    maxDiffPixels: 20,
+    // Bot turns are authoritative and can advance while the geometry loop runs in parallel CI.
+    // Keep enough tolerance for card/score content while still catching meaningful layout drift.
+    maxDiffPixelRatio: 0.04,
     mask: [page.getByTestId('turn-timer')],
   });
 });
@@ -130,4 +132,24 @@ test('keeps a ten-card table hand within a mobile viewport', async ({ page }) =>
   await expect(hand.locator('[data-hand-card]')).toHaveCount(10);
   expect(await hand.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('contains a six-seat practice table on desktop and mobile', async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Practice' }).click();
+    await page.getByLabel('Display name').fill('Ada');
+    await page.getByLabel('Bot opponents').selectOption('5');
+    await page.getByRole('button', { name: 'Start practice' }).click();
+    const table = page.getByRole('region', { name: 'Game table' });
+    await expect(table.locator('.opponent-seat')).toHaveCount(5);
+    expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
 });

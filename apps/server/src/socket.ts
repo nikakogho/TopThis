@@ -6,6 +6,9 @@ import {
   QueueIntentSchema,
   PrivateMatchAckSchema,
   PrivateMatchLeaveAckSchema,
+  PrivateMatchExitAckSchema,
+  PracticeLeaveAckSchema,
+  PracticeLeaveIntentSchema,
   PublicServerHandshakeSchema,
   SocketErrorSchema,
   type PublicServerHandshake,
@@ -29,6 +32,7 @@ export const SOCKET_EVENTS = {
   matchPlay: 'match:play',
   matchSkip: 'match:skip',
   matchLeave: 'match:leave',
+  matchExit: 'match:exit',
   matchState: 'match:state',
   queueEnter: 'queue:enter',
   queueLeave: 'queue:leave',
@@ -97,6 +101,20 @@ export function attachSocketBoundary(
           });
         }
       });
+    socket.on('practice:leave', (raw: unknown, ack?: (value: unknown) => void) => {
+      try {
+        PracticeLeaveIntentSchema.parse(raw);
+        practice.remove(socket.id);
+        ack?.(PracticeLeaveAckSchema.parse({ ok: true }));
+      } catch {
+        ack?.(
+          PracticeLeaveAckSchema.parse({
+            ok: false,
+            error: { code: 'INVALID_PAYLOAD', message: 'Invalid socket payload' },
+          }),
+        );
+      }
+    });
     socket.on('disconnect', () => practice.remove(socket.id));
   }
   if (privateService) {
@@ -192,6 +210,16 @@ export function attachSocketBoundary(
         ack?.(PrivateMatchLeaveAckSchema.parse({ ok: true }));
       } catch (error) {
         ack?.(PrivateMatchLeaveAckSchema.parse({ ok: false, error: failure(error) }));
+      }
+    });
+    socket.on(SOCKET_EVENTS.matchExit, async (raw: unknown, ack?: (v: unknown) => void) => {
+      try {
+        if (socket.data.privateReconnectError)
+          throw Error(String(socket.data.privateReconnectError));
+        await privateService.exit(socket, raw);
+        ack?.(PrivateMatchExitAckSchema.parse({ ok: true }));
+      } catch (error) {
+        ack?.(PrivateMatchExitAckSchema.parse({ ok: false, error: failure(error) }));
       }
     });
     socket.on('disconnect', () => privateService.disconnect(socket));

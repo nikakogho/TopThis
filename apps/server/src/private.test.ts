@@ -6,6 +6,7 @@ import {
   type LobbyAck,
   type LobbyLeaveAck,
   type PrivateMatchAck,
+  type PrivateMatchExitAck,
   type PrivateMatchLeaveAck,
   type PrivateMatchView,
   type QueueAck,
@@ -228,7 +229,7 @@ describe('private multiplayer integration', () => {
     expect(invalid.connected).toBe(false);
   });
 
-  it('enforces lobby authorization and transfers host after disconnect grace', async () => {
+  it('enforces lobby authorization and closes a lobby when its host disconnects', async () => {
     await start({ disconnectGraceMs: 20 });
     const host = await createGuest('Host');
     const joiner = await createGuest('Joiner');
@@ -255,16 +256,57 @@ describe('private multiplayer integration', () => {
       error: { code: 'NOT_HOST' },
     });
 
-    const transferred = waitForEvent<import('@topthis/shared').LobbyView>(
-      joinerSocket,
+    const explicitlyRemoved = waitForEvent<import('@topthis/shared').LobbyView>(
+      hostSocket,
       'lobby:state',
       (view) => view.players.length === 1,
     );
-    hostSocket.close();
-    const view = await transferred;
-    expect(view.hostGuestId).toBe(joiner.guest.id);
-    expect(view.players[0]?.guest.id).toBe(joiner.guest.id);
     expect(await emitAck<LobbyLeaveAck>(joinerSocket, 'lobby:leave', {})).toEqual({ ok: true });
+    expect((await explicitlyRemoved).hostGuestId).toBe(host.guest.id);
+    expect(
+      await emitAck<LobbyAck>(joinerSocket, 'lobby:join', { code: created.view.code }),
+    ).toMatchObject({ ok: true });
+
+    const disconnected = waitForEvent<import('@topthis/shared').LobbyView>(
+      hostSocket,
+      'lobby:state',
+      (view) => view.players.length === 1,
+    );
+    joinerSocket.close();
+    expect((await disconnected).hostGuestId).toBe(host.guest.id);
+    const replacement = (await connect(joiner.token)).socket;
+    expect(
+      await emitAck<LobbyAck>(replacement, 'lobby:join', { code: created.view.code }),
+    ).toMatchObject({ ok: true });
+
+    const closed = waitForEvent<{ code: string }>(
+      replacement,
+      'lobby:closed',
+      (view) => view.code === created.view.code,
+    );
+    hostSocket.close();
+    await closed;
+    expect(await emitAck<LobbyAck>(replacement, 'lobby:create', {})).toMatchObject({ ok: true });
+  });
+
+  it('closes and releases a lobby when its host explicitly leaves', async () => {
+    await start();
+    const host = await createGuest('Leaving Host');
+    const joiner = await createGuest('Released Joiner');
+    const hostSocket = (await connect(host.token)).socket;
+    const joinerSocket = (await connect(joiner.token)).socket;
+    const created = await emitAck<LobbyAck>(hostSocket, 'lobby:create', {});
+    if (!created.ok) throw new Error(created.error.message);
+    expect(
+      await emitAck<LobbyAck>(joinerSocket, 'lobby:join', { code: created.view.code }),
+    ).toMatchObject({ ok: true });
+    const closed = waitForEvent<{ code: string }>(
+      joinerSocket,
+      'lobby:closed',
+      (view) => view.code === created.view.code,
+    );
+    expect(await emitAck<LobbyLeaveAck>(hostSocket, 'lobby:leave', {})).toEqual({ ok: true });
+    await closed;
     expect(await emitAck<LobbyAck>(joinerSocket, 'lobby:create', {})).toMatchObject({ ok: true });
   });
 
@@ -346,7 +388,6 @@ describe('private multiplayer integration', () => {
 
     const reconnectGuest = guests[2]!;
     const originalHand = states[2]!.hand.map((card) => card.instanceId);
-    sockets[2]!.close();
     const replacement = await connect(reconnectGuest.token, 'match:state');
     const reconnected = (await replacement.initial) as PrivateMatchView;
     expect(reconnected.hand.map((card) => card.instanceId)).toEqual(originalHand);
@@ -436,6 +477,75 @@ describe('private multiplayer integration', () => {
     });
   });
 
+  it('starts a six-seat private match with five opaque server bots', async () => {
+    let ratedCompletions = 0;
+    await start({
+      targetScore: 1,
+      turnDurationMs: 5,
+      botDelayMs: 1,
+      roundResultDelayMs: 1,
+      onComplete: () => {
+        ratedCompletions += 1;
+      },
+    });
+    const host = await createGuest('Six Seat Host');
+    const socket = (await connect(host.token)).socket;
+    const created = await emitAck<LobbyAck>(socket, 'lobby:create', {
+      settings: { playerCount: 6, botCount: 5, targetScore: 10, turnDurationSeconds: 5 },
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    expect(await emitAck<LobbyAck>(socket, 'lobby:ready', { ready: true })).toMatchObject({
+      ok: true,
+    });
+    const state = waitForEvent<PrivateMatchView>(
+      socket,
+      'match:state',
+      (view) => view.players.length === 6,
+    );
+    const completion = waitForEvent<PrivateMatchView>(
+      socket,
+      'match:state',
+      (view) => view.phase === 'completed',
+      2_000,
+    );
+    const transition = waitForEvent<PrivateMatchView>(
+      socket,
+      'match:state',
+      (view) => view.stateVersion > 0,
+      2_000,
+    );
+    expect(await emitAck<LobbyAck>(socket, 'lobby:start', {})).toMatchObject({ ok: true });
+    const view = await state;
+    expect(view.players.filter((player) => player.isBot)).toHaveLength(5);
+    expect(view.players.filter((player) => player.isBot).every((player) => player.connected)).toBe(
+      true,
+    );
+    expect(
+      view.players.filter((player) => player.isBot).every((player) => !('hand' in player)),
+    ).toBe(true);
+    const transitioned = await transition;
+    expect(transitioned.stateVersion).toBeGreaterThan(view.stateVersion);
+    expect((await completion).winnerIds).toHaveLength(1);
+    expect(ratedCompletions).toBe(0);
+  });
+
+  it('validates active exit and immediately releases the departed guest', async () => {
+    const game = await makeLobby(2, {
+      targetScore: 10,
+      turnDurationMs: 500,
+      roundResultDelayMs: 5,
+    });
+    const exiting = game.sockets[0]!;
+    expect(
+      await emitAck<PrivateMatchExitAck>(exiting, 'match:exit', { playerId: 'forged' }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_PAYLOAD' },
+    });
+    expect(await emitAck<PrivateMatchExitAck>(exiting, 'match:exit', {})).toEqual({ ok: true });
+    expect(await emitAck<LobbyAck>(exiting, 'lobby:create', {})).toMatchObject({ ok: true });
+  });
+
   it('uses private turn timeouts and advances abandoned seats through normal commands', async () => {
     const normal = await makeLobby(2, {
       targetScore: 3,
@@ -452,7 +562,7 @@ describe('private multiplayer integration', () => {
     expect(timedOut.stateVersion).toBeGreaterThan(normal.states[0]!.stateVersion);
   });
 
-  it('rejects reconnect after grace and lets an abandoned seat finish the match', async () => {
+  it('removes a disconnected active seat immediately and releases its guest', async () => {
     const game = await makeLobby(2, {
       targetScore: 3,
       turnDurationMs: 500,
@@ -472,19 +582,12 @@ describe('private multiplayer integration', () => {
     );
     game.sockets[currentIndex]!.close();
     const final = await completed;
-    const abandonedId = game.guests[currentIndex]!.guest.id;
-    expect(final.players.find((player) => player.id === abandonedId)?.abandoned).toBe(true);
+    const departed = game.guests[currentIndex]!.guest;
+    expect(final.players.some((player) => player.id === departed.id)).toBe(false);
     expect(final.winnerIds).toContain(game.guests[remainingIndex]!.guest.id);
 
-    const expired = (await connect(game.guests[currentIndex]!.token)).socket;
-    expect(
-      await emitAck<PrivateMatchAck>(expired, 'match:skip', {
-        commandId: 'expired1',
-        matchId: final.matchId,
-        expectedStateVersion: final.stateVersion,
-        expectedTurnId: 'expired-turn',
-      }),
-    ).toMatchObject({ ok: false, error: { code: 'RECONNECT_EXPIRED' } });
+    const replacement = (await connect(game.guests[currentIndex]!.token)).socket;
+    expect(await emitAck<LobbyAck>(replacement, 'lobby:create', {})).toMatchObject({ ok: true });
   });
 
   it('matches authenticated guests FIFO, isolates hands, and persists the completed result once', async () => {

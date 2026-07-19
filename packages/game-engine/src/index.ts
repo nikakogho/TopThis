@@ -216,7 +216,9 @@ export type MatchCommand =
       expectedTurnId: string;
     })
   | (BaseCommand & { type: 'skip' | 'timeout'; playerId: string; expectedTurnId: string })
-  | (BaseCommand & { type: 'advanceRound' });
+  | (BaseCommand & { type: 'advanceRound' })
+  // Server-only: boundary schemas intentionally never accept this command.
+  | (BaseCommand & { type: 'removePlayer'; playerId: string });
 export type CommandError =
   | 'malformed'
   | 'wrong_match'
@@ -227,7 +229,8 @@ export type CommandError =
   | 'illegal_play'
   | 'not_in_hand'
   | 'completed'
-  | 'wrong_phase';
+  | 'wrong_phase'
+  | 'not_found';
 export type CommandResult =
   | { accepted: true; state: MatchState }
   | { accepted: false; state: MatchState; error: CommandError };
@@ -279,7 +282,7 @@ export function createMatch(input: CreateMatchInput): MatchState {
     !ID.test(input.matchId) ||
     !Number.isInteger(input.seed) ||
     input.playerIds.length < 2 ||
-    input.playerIds.length > 4 ||
+    input.playerIds.length > 6 ||
     !unique(input.playerIds) ||
     input.playerIds.some((id) => !ID.test(id)) ||
     !Number.isInteger(input.targetScore ?? 50) ||
@@ -365,11 +368,72 @@ function refillAndStart(state: MatchState): void {
   setTurn(state, nextClockwise(state, winner)!);
 }
 
+const nextInOrder = (ids: readonly string[], from: string, excluded: readonly string[] = []) => {
+  const start = ids.indexOf(from);
+  const omitted = new Set(excluded);
+  for (let step = 1; step <= ids.length; step += 1) {
+    const candidate = ids[(start + step) % ids.length]!;
+    if (!omitted.has(candidate)) return candidate;
+  }
+  return undefined;
+};
+
+function removePlayer(state: MatchState, removedId: string): CommandError | undefined {
+  const leaving = player(state, removedId);
+  if (!leaving) return 'not_found';
+  const order = active(state);
+  const successor = nextInOrder(order, removedId);
+  // A leaving hand returns to the bottom of the draw deck in its existing stable order.
+  state.deck.push(...leaving.hand);
+
+  if (state.phase === 'round_result' && state.roundWinnerId === removedId) {
+    const recipient = successor!;
+    const award = state.roundResult?.pileCount ?? 0;
+    leaving.capturedCardCount -= award;
+    const winner = player(state, recipient)!;
+    winner.capturedCardCount += award;
+    state.roundWinnerId = recipient;
+    if (state.roundResult)
+      state.roundResult = {
+        winnerId: recipient,
+        pileCount: award,
+        capturedCardCount: winner.capturedCardCount,
+      };
+  }
+
+  state.players = state.players.filter((entry) => entry.id !== removedId);
+  state.passedPlayerIds = state.passedPlayerIds.filter((id) => id !== removedId);
+  if (state.players.length === 1) {
+    complete(state);
+    return undefined;
+  }
+
+  if (state.leaderId === removedId) {
+    state.leaderId = successor!;
+    if (state.challenge) state.challenge = { ...state.challenge, ownerId: successor! };
+    // A new leader starts a fresh challenge contest; prior passes do not carry over.
+    state.passedPlayerIds = [];
+  }
+  if (state.phase === 'playing') {
+    if (state.turnPlayerId === removedId) {
+      const next = nextInOrder(order, removedId, [...state.passedPlayerIds, state.leaderId]);
+      if (next) setTurn(state, next);
+      else {
+        finishRound(state);
+        return undefined;
+      }
+    }
+    const others = active(state).filter((id) => id !== state.leaderId);
+    if (others.every((id) => state.passedPlayerIds.includes(id))) finishRound(state);
+  }
+  return undefined;
+}
+
 export function applyCommand(state: MatchState, command: MatchCommand): CommandResult {
   if (
     !command ||
     typeof command !== 'object' ||
-    !['play', 'skip', 'timeout', 'advanceRound'].includes(
+    !['play', 'skip', 'timeout', 'advanceRound', 'removePlayer'].includes(
       (command as { type?: unknown }).type as string,
     ) ||
     typeof command.commandId !== 'string' ||
@@ -378,7 +442,8 @@ export function applyCommand(state: MatchState, command: MatchCommand): CommandR
     !command.matchId ||
     !Number.isInteger(command.expectedStateVersion) ||
     (command.type !== 'advanceRound' &&
-      (typeof command.playerId !== 'string' || typeof command.expectedTurnId !== 'string')) ||
+      (typeof command.playerId !== 'string' ||
+        (command.type !== 'removePlayer' && typeof command.expectedTurnId !== 'string'))) ||
     (command.type === 'play' && typeof command.cardInstanceId !== 'string')
   )
     return { accepted: false, state, error: 'malformed' };
@@ -389,7 +454,10 @@ export function applyCommand(state: MatchState, command: MatchCommand): CommandR
   if (command.expectedStateVersion !== state.stateVersion)
     return { accepted: false, state, error: 'stale_version' };
   const next = copyState(state);
-  if (command.type === 'advanceRound') {
+  if (command.type === 'removePlayer') {
+    const error = removePlayer(next, command.playerId);
+    if (error) return { accepted: false, state, error };
+  } else if (command.type === 'advanceRound') {
     if (next.phase !== 'round_result') return { accepted: false, state, error: 'wrong_phase' };
     refillAndStart(next);
   } else {

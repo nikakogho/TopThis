@@ -13,6 +13,8 @@ if (!Number.isInteger(seedCount) || seedCount < 1)
 const definitions = JSON.parse(
   fs.readFileSync(new URL('../content/cards.json', import.meta.url), 'utf8'),
 );
+const reportPlayerCounts = [2, 3, 4, 5, 6];
+const gatedPlayerCounts = new Set([2, 3, 4]);
 const playerIds = (count) => Array.from({ length: count }, (_, index) => `p${index + 1}`);
 const percentile = (sorted, fraction) => sorted[Math.ceil(sorted.length * fraction) - 1];
 const metrics = (piles) => {
@@ -84,12 +86,16 @@ function playMatch(count, seed) {
 
 const byPlayerCount = new Map();
 const allPiles = [];
-for (const count of [2, 3, 4]) {
+const gatedPiles = [];
+for (const count of reportPlayerCounts) {
   const piles = Array.from({ length: seedCount }, (_, seed) => playMatch(count, seed)).flat();
   allPiles.push(...piles);
+  if (gatedPlayerCounts.has(count)) gatedPiles.push(...piles);
   byPlayerCount.set(count, metrics(piles));
 }
-const overallMetrics = metrics(allPiles);
+// Preserve the established 2–4-player release thresholds while reporting the new 5/6 modes.
+const overallMetrics = metrics(gatedPiles);
+const allPlayerMetrics = metrics(allPiles);
 const thresholds = [
   [overallMetrics.mean >= 5, `overall mean ${overallMetrics.mean.toFixed(2)} < 5.00`],
   [overallMetrics.median >= 4, `overall median ${overallMetrics.median} < 4`],
@@ -113,4 +119,5 @@ console.log(
   `TopThis deterministic first-legal balance analysis (${seedCount} seeds per player count)`,
 );
 for (const [count, value] of byPlayerCount) print(`${count} players`, value);
-print('overall', overallMetrics);
+print('gated 2–4 overall', overallMetrics);
+print('all 2–6 overall', allPlayerMetrics);

@@ -50,13 +50,14 @@ export const SocketErrorSchema = z
       'RECONNECT_EXPIRED',
       'QUEUE_UNAVAILABLE',
       'MATCH_ACTIVE',
+      'LOBBY_CLOSED',
     ]),
     message: z.string().min(1),
   })
   .strict();
 export type SocketError = z.infer<typeof SocketErrorSchema>;
 export const PracticeCreateIntentSchema = z
-  .object({ displayName: DisplayNameSchema, botCount: z.number().int().min(1).max(3) })
+  .object({ displayName: DisplayNameSchema, botCount: z.number().int().min(1).max(5) })
   .strict();
 export type PracticeCreateIntent = z.infer<typeof PracticeCreateIntentSchema>;
 const CommandBaseSchema = z
@@ -108,7 +109,7 @@ export const PracticeMatchViewSchema = z
     yourPlayerId: SafeIdSchema,
     stateVersion: z.number().int().nonnegative(),
     phase: z.enum(['playing', 'round_result', 'completed']),
-    players: z.array(PracticePlayerViewSchema).min(2).max(4),
+    players: z.array(PracticePlayerViewSchema).min(1).max(6),
     hand: z.array(PublicCardViewSchema),
     legalCardInstanceIds: z.array(CardInstanceIdSchema),
     challengeCard: PublicCardViewSchema.optional(),
@@ -139,6 +140,12 @@ export const PracticeAckSchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 export type PracticeAck = z.infer<typeof PracticeAckSchema>;
+export const PracticeLeaveIntentSchema = z.object({}).strict();
+export const PracticeLeaveAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }).strict(),
+  z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
+]);
+export type PracticeLeaveAck = z.infer<typeof PracticeLeaveAckSchema>;
 
 /** Anonymous local identity. Tokens are deliberately only present in this response. */
 export const GuestSchema = z.object({ id: SafeIdSchema, displayName: DisplayNameSchema }).strict();
@@ -153,11 +160,16 @@ export type GuestMeResponse = z.infer<typeof GuestMeResponseSchema>;
 export const LobbyCodeSchema = z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
 export const LobbySettingsSchema = z
   .object({
-    playerCount: z.number().int().min(2).max(4),
+    playerCount: z.number().int().min(2).max(6),
+    botCount: z.number().int().min(0).max(5).default(0),
     targetScore: z.number().int().min(10).max(200),
     turnDurationSeconds: z.number().int().min(5).max(60),
   })
-  .strict();
+  .strict()
+  .refine((settings) => settings.botCount < settings.playerCount, {
+    message: 'At least one human seat is required',
+    path: ['botCount'],
+  });
 export type LobbySettings = z.infer<typeof LobbySettingsSchema>;
 export const LobbyPlayerViewSchema = z
   .object({ guest: GuestSchema, ready: z.boolean(), connected: z.boolean() })
@@ -167,7 +179,7 @@ export const LobbyViewSchema = z
     code: LobbyCodeSchema,
     hostGuestId: SafeIdSchema,
     settings: LobbySettingsSchema,
-    players: z.array(LobbyPlayerViewSchema).min(1).max(4),
+    players: z.array(LobbyPlayerViewSchema).min(1).max(6),
     started: z.boolean(),
   })
   .strict();
@@ -193,19 +205,21 @@ export const LobbyLeaveAckSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
 ]);
 export type LobbyLeaveAck = z.infer<typeof LobbyLeaveAckSchema>;
+export const LobbyClosedViewSchema = z.object({ code: LobbyCodeSchema }).strict();
+export type LobbyClosedView = z.infer<typeof LobbyClosedViewSchema>;
 
 export const PrivateMatchViewSchema = PracticeMatchViewSchema.extend({
   matchMode: z.enum(['private', 'matchmaking']),
   players: z
     .array(
       PracticePlayerViewSchema.extend({
-        isBot: z.literal(false),
+        isBot: z.boolean(),
         connected: z.boolean(),
         abandoned: z.boolean(),
       }),
     )
-    .min(2)
-    .max(4),
+    .min(1)
+    .max(6),
   placements: z.array(SafeIdSchema).optional(),
 }).strict();
 export type PrivateMatchView = z.infer<typeof PrivateMatchViewSchema>;
@@ -229,6 +243,13 @@ export const PrivateMatchLeaveAckSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
 ]);
 export type PrivateMatchLeaveAck = z.infer<typeof PrivateMatchLeaveAckSchema>;
+/** Active exit is identity-only: the server selects the departing player. */
+export const PrivateMatchExitIntentSchema = z.object({}).strict();
+export const PrivateMatchExitAckSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }).strict(),
+  z.object({ ok: z.literal(false), error: SocketErrorSchema }).strict(),
+]);
+export type PrivateMatchExitAck = z.infer<typeof PrivateMatchExitAckSchema>;
 
 /** Matchmaking deliberately exposes no opponent identity or match secrets. */
 export const QueueStatusSchema = z

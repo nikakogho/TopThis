@@ -1,6 +1,11 @@
 # Test plan
 
-Unit tests cover deterministic engine operations, seeded randomness, card legality, ties, and scoring. Shared schemas and server endpoints test malformed input rejection, authorization, hidden-hand isolation, idempotency, timeouts, and reconnect behavior. Browser smoke and Playwright flows verify the client shell and later gameplay journeys.
+Unit tests cover deterministic engine operations, seeded randomness, card
+legality, ties, scoring, two-to-six-player setup and player removal/replay.
+Shared schemas and server endpoints test malformed input rejection,
+authorization, hidden-hand isolation, idempotency, timeouts, server bot turns,
+forfeit ratings, host closure and immediate departures. Browser smoke and
+Playwright flows verify the client shell and complete gameplay journeys.
 
 CI runs formatting, ESLint, strict type checking, package tests, and builds on
 Node 24 with pnpm 11.
@@ -17,6 +22,12 @@ recipient privacy, completes a real authoritative match, verifies zero-sum
 rating changes and win/loss records, reloads into the completed match, and
 reopens the persisted leaderboard. Practice and private multiplayer flows
 remain part of the regression suite.
+
+Enhancement 3 coverage adds active Exit acknowledgement and confirmation,
+Practice cleanup, member removal, host leave/disconnect closure, same-token
+replacement safety, mixed human/server-bot private matches, unranked bot
+completion, five/six-player balance reporting, a six-seat responsive table and
+the physical layered pile with an unobscured top challenge card.
 
 Phase 5 web coverage includes a focused Vitest assertion that the landing
 How to Play action opens semantic Rules content and that Return to menu restores

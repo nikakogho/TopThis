@@ -2,10 +2,10 @@
 
 **Everything beats something. Top this.**
 
-TopThis is a local-first strategic card game for two to four players. Every
+TopThis is a local-first strategic card game for two to six players. Every
 legal matchup is explicit: rarity changes presentation, never the rules. The
 MVP includes server-authoritative practice bots, private lobbies, public
-matchmaking, reconnection, persisted results, pairwise Elo ratings and a
+matchmaking, mixed server-bot tables, persisted results, pairwise Elo ratings and a
 leaderboard.
 
 ## Prerequisites
@@ -36,19 +36,23 @@ pnpm.cmd dev
 
 ## Playing locally
 
-- **Practice** starts a complete match against one to three server-controlled
+- **Practice** starts a complete match against one to five server-controlled
   bots.
-- **Host Game** and **Join Game** create a private two-to-four-player lobby.
-  Share the six-character code, ready every seat, then let the host start.
+- **Host Game** and **Join Game** create a private two-to-six-player lobby with
+  any mix of human and server-controlled bot seats. Share the six-character
+  code, ready every human seat, then let the host start. Mixed-bot games are
+  unranked.
 - **Find Match** places an authenticated guest into the local two-player FIFO
   queue.
 - **Leaderboard** shows persisted rating and win/loss/tie records.
 - **How to Play** explains setup, legal counters, rounds, special cards,
-  scoring, timeouts, reconnection and hand privacy.
+  scoring, timeouts, exits and hand privacy.
 
 Each browser profile stores one opaque guest token locally. A newer connection
-with the same token resumes that guest's lobby or match. The server never sends
-one player's private hand or legal moves to another client.
+with the same token safely replaces the older live socket. A real lobby or
+active-match disconnect removes that player immediately; if the lobby host
+leaves, the lobby closes for everyone. The server never sends one player's
+private hand or legal moves to another client.
 
 ## Build and test
 

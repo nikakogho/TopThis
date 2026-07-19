@@ -9,7 +9,7 @@ import {
   type LeaderboardResponse,
 } from '@topthis/shared';
 
-export type CompletionPlayer = { guestId: string; score: number };
+export type CompletionPlayer = { guestId: string; score: number; forfeited?: boolean };
 export type CompletionInput = {
   matchId: string;
   mode: 'private' | 'matchmaking';
@@ -30,7 +30,16 @@ export function calculateElo(
     let delta = 0;
     for (const other of players)
       if (other.guestId !== p.guestId) {
-        const actual = p.score === other.score ? 0.5 : p.score > other.score ? 1 : 0;
+        const actual =
+          p.forfeited !== other.forfeited
+            ? p.forfeited
+              ? 0
+              : 1
+            : p.score === other.score
+              ? 0.5
+              : p.score > other.score
+                ? 1
+                : 0;
         const expected = 1 / (1 + 10 ** ((other.rating - p.rating) / 400));
         delta += (24 / (players.length - 1)) * (actual - expected);
       }
@@ -173,13 +182,20 @@ export class SqliteGuestRepository implements GuestRepository {
         return { ...p, rating: row.rating };
       });
       if (rows.length < 2) throw Error('INVALID_COMPLETION');
-      const deltas = calculateElo(rows),
-        high = Math.max(...rows.map((x) => x.score)),
-        first = rows.filter((x) => x.score === high);
+      const deltas = calculateElo(rows);
+      const ranked = [...rows].sort(
+        (left, right) =>
+          Number(!!left.forfeited) - Number(!!right.forfeited) ||
+          right.score - left.score ||
+          left.guestId.localeCompare(right.guestId),
+      );
+      const isTop = (row: (typeof rows)[number]) =>
+        !row.forfeited && ranked[0]!.score === row.score && !ranked[0]!.forfeited;
+      const topCount = rows.filter(isTop).length;
       const ratings: CompletionResult['ratings'] = {};
       for (const row of rows) {
         const after = row.rating + deltas[row.guestId]!;
-        const outcome = row.score === high ? (first.length > 1 ? 'ties' : 'wins') : 'losses';
+        const outcome = isTop(row) ? (topCount > 1 ? 'ties' : 'wins') : 'losses';
         this.db
           .prepare(
             `UPDATE guests SET rating = ?, games_played = games_played + 1, ${outcome} = ${outcome} + 1 WHERE id = ?`,
@@ -201,8 +217,14 @@ export class SqliteGuestRepository implements GuestRepository {
           JSON.stringify(result),
         );
       for (const row of rows) {
-        const placement = 1 + rows.filter((other) => other.score > row.score).length;
-        const outcome = row.score === high ? (first.length > 1 ? 'tie' : 'win') : 'loss';
+        const placement =
+          1 +
+          rows.filter(
+            (other) =>
+              (row.forfeited && !other.forfeited) ||
+              (row.forfeited === other.forfeited && other.score > row.score),
+          ).length;
+        const outcome = isTop(row) ? (topCount > 1 ? 'tie' : 'win') : 'loss';
         this.db
           .prepare(
             'INSERT INTO completed_match_players (match_id, guest_id, score, placement, outcome, rating_before, rating_after) VALUES (?, ?, ?, ?, ?, ?, ?)',

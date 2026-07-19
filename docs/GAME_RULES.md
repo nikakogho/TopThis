@@ -1,6 +1,6 @@
 # Game rules
 
-TopThis is a turn-based pile contest for two to four players. Card legality is
+TopThis is a turn-based pile contest for two to six players. Card legality is
 data-driven: a played card is legal only when its resolved
 `beatsDefinitionIds` contains the current challenge definition ID. Rarity,
 price, artwork and tags never create runtime legality.
@@ -55,23 +55,40 @@ at least one player has reached the configured target captured-card score after
 a round, or when no card remains to begin another round. Every player tied for
 the highest captured-card score is a winner.
 
-Defaults are a target score of 50, a 20-second server turn timer and a 60-second
-server reconnection grace period.
+Defaults are a target score of 50 and a 20-second server turn timer.
+
+## Humans, bots and departures
+
+Private lobbies reserve zero through five server-bot seats within the configured
+two-to-six total. Every connected human must ready up; server bots never receive
+private data in a browser and submit deterministic legal actions through the
+same serialized server command path. Practice supports one human with one to
+five server bots. Matches containing bots are deliberately unranked.
+
+An explicit Exit or a real disconnect removes that human immediately. Their
+hand returns to the bottom of the deterministic deck, their public seat and
+score leave the board, and clockwise turn/pass state is repaired. If the pile
+leader leaves, the next clockwise player inherits leadership; a round-result
+award transfers the same way. One remaining player wins by forfeit. In a lobby,
+a non-host departure removes that seat, while a host departure closes and
+releases the entire lobby.
 
 ## Matchmaking and ratings
 
 Find Match uses an authenticated, deterministic FIFO queue for two-player
 matches. The queue exposes only `queued`, `position` and `playersNeeded`; a
 pair receives the same authoritative private-match runner, including hidden
-hands, serialized commands, turn timeouts, reconnect grace and abandoned-seat
-auto-skips. Queue events are `queue:enter`, `queue:leave` and `queue:status`.
+hands, serialized commands, turn timeouts and authoritative departures. Queue
+events are `queue:enter`, `queue:leave` and `queue:status`.
 
 Completed matches are persisted exactly once. For each player, Elo compares
 every opponent using the standard expectation, with K = 24/(N-1), actual score
 1, 0 or 0.5 from final score, and deterministic floor plus
 largest-fractional-remainder zero-sum integer rounding. Unique first place
 increments wins; tied first places increment ties; all lower places increment
-losses. New guests start at rating 1000.
+losses. A forfeiting human ranks below every non-forfeiter even when their
+captured score was higher, so exiting cannot evade a rating loss. New guests
+start at rating 1000.
 
 The leaderboard accepts page >= 1 and pageSize 1-100. Results sort by rating
 descending, wins descending, games played ascending, display name, then guest ID

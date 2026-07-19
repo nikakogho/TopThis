@@ -1,4 +1,11 @@
-import { StrictMode, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  StrictMode,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
 import {
@@ -9,10 +16,15 @@ import {
   type LobbyAck,
   type LobbyView,
   type PracticeAck,
+  type PracticeLeaveAck,
+  PracticeLeaveAckSchema,
   type PracticeMatchView,
   type PrivateMatchAck,
   type PrivateMatchLeaveAck,
   PrivateMatchLeaveAckSchema,
+  type PrivateMatchExitAck,
+  PrivateMatchExitAckSchema,
+  LobbyClosedViewSchema,
   type PrivateMatchView,
   type QueueStatus,
   type QueueAck,
@@ -129,12 +141,14 @@ function App() {
   const [joinCode, setJoinCode] = useState('');
   const [settings, setSettings] = useState({
     playerCount: 2,
+    botCount: 0,
     targetScore: 50,
     turnDurationSeconds: 20,
   });
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const [connected, setConnected] = useState(socket.connected);
   const [now, setNow] = useState(Date.now());
   const [queueStatus, setQueueStatus] = useState<QueueStatus>({ queued: false, playersNeeded: 1 });
@@ -147,6 +161,8 @@ function App() {
   const rulesTriggerRef = useRef<HTMLButtonElement>(null);
   const rulesTitleRef = useRef<HTMLHeadingElement>(null);
   const previousScreenRef = useRef<Screen | undefined>(undefined);
+  const exitTriggerRef = useRef<HTMLButtonElement>(null);
+  const exitDialogRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (screen === 'rules') rulesTitleRef.current?.focus();
@@ -167,7 +183,10 @@ function App() {
     };
     const onLobby = (next: LobbyView) => {
       setLobby(next);
-      setSettings(next.settings);
+      setSettings({
+        ...next.settings,
+        botCount: (next.settings as typeof next.settings & { botCount?: number }).botCount ?? 0,
+      });
       setScreen('lobby');
     };
     const onMatch = (next: PrivateMatchView) => {
@@ -179,6 +198,15 @@ function App() {
       setQueueStatus(next);
       setScreen((current) => (next.queued ? 'queue' : current === 'queue' ? 'landing' : current));
     };
+    const onLobbyClosed = (raw: unknown) => {
+      setLobby(undefined);
+      setScreen('landing');
+      setError(
+        LobbyClosedViewSchema.safeParse(raw).success
+          ? 'The host closed this lobby.'
+          : 'This lobby is no longer available.',
+      );
+    };
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     const onConnectError = () => setError('Could not connect to TopThis Server.');
@@ -186,6 +214,7 @@ function App() {
     socket.on('lobby:state', onLobby);
     socket.on('match:state', onMatch);
     socket.on('queue:status', onQueue);
+    socket.on('lobby:closed', onLobbyClosed);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
@@ -194,6 +223,7 @@ function App() {
       socket.off('lobby:state', onLobby);
       socket.off('match:state', onMatch);
       socket.off('queue:status', onQueue);
+      socket.off('lobby:closed', onLobbyClosed);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
@@ -322,6 +352,7 @@ function App() {
     return false;
   };
   const openPrivate = (action: 'host' | 'join') => {
+    setError('');
     setPendingAction(action);
     setScreen(guest ? action : 'identity');
   };
@@ -477,6 +508,57 @@ function App() {
     }
     setSelected(undefined);
   };
+  const resetMatch = () => {
+    setConfirmExit(false);
+    setView(undefined);
+    setPrivateView(undefined);
+    setSelected(undefined);
+    setError('');
+    setScreen('landing');
+  };
+  const closeExitConfirmation = () => {
+    setConfirmExit(false);
+    window.setTimeout(() => exitTriggerRef.current?.focus(), 0);
+  };
+  const exitMatch = async () => {
+    setBusy(true);
+    setError('');
+    const event = networked ? 'match:exit' : 'practice:leave';
+    const raw = await new Promise<unknown>((resolve) => {
+      let settled = false;
+      const finish = (value: unknown) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        resolve(value);
+      };
+      const timeout = window.setTimeout(() => finish(undefined), 8000);
+      if (networked) socket.emit(event, {}, (ack: PrivateMatchExitAck) => finish(ack));
+      else socket.emit(event, {}, (ack: PracticeLeaveAck) => finish(ack));
+    });
+    if (networked) {
+      const ack = PrivateMatchExitAckSchema.safeParse(raw);
+      setBusy(false);
+      if (ack.success && ack.data.ok) {
+        resetMatch();
+      } else
+        setError(
+          ack.success && !ack.data.ok
+            ? ack.data.error.message
+            : 'Could not leave this match. Try again.',
+        );
+      return;
+    }
+    const ack = PracticeLeaveAckSchema.safeParse(raw);
+    setBusy(false);
+    if (ack.success && ack.data.ok) resetMatch();
+    else
+      setError(
+        ack.success && !ack.data.ok
+          ? ack.data.error.message
+          : 'Could not close this practice table. Try again.',
+      );
+  };
 
   if (screen === 'landing') {
     return (
@@ -511,8 +593,16 @@ function App() {
             <span>Multiplayer will create a saved local guest profile with your display name.</span>
           )}
         </section>
+        {error && <p role="alert">{error}</p>}
         <div className="actions">
-          <button onClick={() => setScreen('setup')}>Practice</button>
+          <button
+            onClick={() => {
+              setError('');
+              setScreen('setup');
+            }}
+          >
+            Practice
+          </button>
           <button onClick={() => openPrivate('host')}>Host Game</button>
           <button onClick={() => openPrivate('join')}>Join Game</button>
           <button
@@ -603,9 +693,9 @@ function App() {
         <section>
           <h2>Time and connection</h2>
           <p>
-            Each turn has a server deadline. An expired turn becomes an automatic skip. If you
-            reconnect during the grace period, the server restores your exact private hand.
-            Opponents never receive your cards or legal moves.
+            Each turn has a server deadline. An expired turn becomes an automatic skip. If you leave
+            or disconnect, the server removes your seat immediately; if a lobby host leaves, that
+            lobby closes for everyone. Opponents never receive your cards or legal moves.
           </p>
         </section>
         <button className="secondary" onClick={() => setScreen('landing')}>
@@ -748,12 +838,42 @@ function App() {
               Players
               <select
                 value={settings.playerCount}
-                onChange={(e) => setSettings({ ...settings, playerCount: Number(e.target.value) })}
+                onChange={(e) => {
+                  const playerCount = Number(e.target.value);
+                  setSettings({
+                    ...settings,
+                    playerCount,
+                    botCount: Math.min(settings.botCount, playerCount - 1),
+                  });
+                }}
               >
-                {[2, 3, 4].map((n) => (
+                {[2, 3, 4, 5, 6].map((n) => (
                   <option key={n}>{n}</option>
                 ))}
               </select>
+            </label>
+            <label>
+              Bot seats
+              <select
+                value={settings.botCount}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    botCount: Math.min(Number(e.target.value), settings.playerCount - 1),
+                  })
+                }
+              >
+                {Array.from({ length: settings.playerCount }, (_, n) => n).map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+              <small>
+                {settings.playerCount - settings.botCount} human{' '}
+                {settings.playerCount - settings.botCount === 1 ? 'seat' : 'seats'},{' '}
+                {settings.botCount} bot {settings.botCount === 1 ? 'seat' : 'seats'}.
+              </small>
             </label>
             <label>
               Target score
@@ -810,7 +930,7 @@ function App() {
     const localPlayer = lobby.players.find((player) => player.guest.id === guest?.id);
     const canStart =
       isHost &&
-      lobby.players.length === lobby.settings.playerCount &&
+      lobby.players.length === lobby.settings.playerCount - lobby.settings.botCount &&
       lobby.players.every((player) => player.ready && player.connected);
     return (
       <main className="setup lobby-screen">
@@ -822,6 +942,7 @@ function App() {
           {lobby.players.map((player) => (
             <li key={player.guest.id}>
               <strong>{player.guest.displayName}</strong>
+              {(player as typeof player & { isBot?: boolean }).isBot && <span>Server bot</span>}
               {player.guest.id === lobby.hostGuestId && <span>Host</span>}
               <span>{player.ready ? 'Ready' : 'Not ready'}</span>
               <span>{player.connected ? 'Connected' : 'Disconnected'}</span>
@@ -837,13 +958,46 @@ function App() {
                 <select
                   value={settings.playerCount}
                   onChange={(event) =>
-                    setSettings({ ...settings, playerCount: Number(event.target.value) })
+                    (() => {
+                      const playerCount = Number(event.target.value);
+                      setSettings({
+                        ...settings,
+                        playerCount,
+                        botCount: Math.min(settings.botCount, playerCount - 1),
+                      });
+                    })()
                   }
                 >
-                  {[2, 3, 4].map((count) => (
+                  {[2, 3, 4, 5, 6].map((count) => (
                     <option key={count}>{count}</option>
                   ))}
                 </select>
+              </label>
+              <label>
+                Bot seats
+                <select
+                  value={settings.botCount}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      botCount: Math.min(Number(event.target.value), settings.playerCount - 1),
+                    })
+                  }
+                >
+                  {Array.from({ length: settings.playerCount }, (_, count) => count).map(
+                    (count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <small>
+                  {settings.playerCount - settings.botCount} human{' '}
+                  {settings.playerCount - settings.botCount === 1 ? 'seat' : 'seats'},{' '}
+                  {settings.botCount} bot {settings.botCount === 1 ? 'seat' : 'seats'}. All humans
+                  must ready up.
+                </small>
               </label>
               <label>
                 Target score
@@ -912,7 +1066,7 @@ function App() {
         <label>
           Bot opponents
           <select value={bots} onChange={(event) => setBots(Number(event.target.value))}>
-            {[1, 2, 3].map((count) => (
+            {[1, 2, 3, 4, 5].map((count) => (
               <option key={count}>{count}</option>
             ))}
           </select>
@@ -975,7 +1129,21 @@ function App() {
   };
 
   return (
-    <main className="table" onKeyDown={onTableKeyDown}>
+    <main className="table" data-state-version={view.stateVersion} onKeyDown={onTableKeyDown}>
+      {view.phase !== 'completed' && (
+        <button
+          ref={exitTriggerRef}
+          className="match-exit"
+          disabled={busy}
+          onClick={() => {
+            setError('');
+            if (networked) setConfirmExit(true);
+            else void exitMatch();
+          }}
+        >
+          <span aria-hidden="true">←</span> {busy && !networked ? 'Leaving…' : 'Exit'}
+        </button>
+      )}
       <header className="table-header">
         <span className="eyebrow">
           TOPTHIS /{' '}
@@ -1006,14 +1174,17 @@ function App() {
                 {player.displayName.slice(0, 1).toUpperCase()}
               </span>
               <strong>{player.displayName}</strong>
+              {(player as { isBot?: boolean }).isBot && <span>Server bot</span>}
               <span>{player.handCount} cards in hand</span>
               {networked && (
                 <span>
-                  {(player as PrivateMatchView['players'][number]).abandoned
-                    ? 'Abandoned'
-                    : (player as PrivateMatchView['players'][number]).connected
-                      ? 'Connected'
-                      : 'Disconnected'}
+                  {player.isBot
+                    ? 'Server controlled'
+                    : (player as PrivateMatchView['players'][number]).abandoned
+                      ? 'Left match'
+                      : (player as PrivateMatchView['players'][number]).connected
+                        ? 'Connected'
+                        : 'Disconnected'}
                 </span>
               )}
             </article>
@@ -1036,7 +1207,13 @@ function App() {
               {Array.from({ length: Math.min(view.pileCount, 10) }, (_, index) => (
                 <span
                   key={index}
-                  style={{ transform: `translate(${index * 2}px, ${-index * 2}px)` }}
+                  style={
+                    {
+                      '--pile-x': `${index * 2}px`,
+                      '--pile-y': `${-index * 2}px`,
+                      '--pile-rotate': `${((index * 17) % 11) - 5}deg`,
+                    } as CSSProperties
+                  }
                 />
               ))}
             </div>
@@ -1151,7 +1328,7 @@ function App() {
           </button>
         </div>
       </div>
-      {error && (
+      {error && !confirmExit && (
         <p className="table-error" role="alert">
           {error}
         </p>
@@ -1235,6 +1412,55 @@ function App() {
                 {busy ? 'Leaving match…' : networked ? 'Return home' : 'New practice'}
               </button>
             )}
+          </section>
+        </div>
+      )}
+      {confirmExit && view.phase !== 'completed' && (
+        <div className="overlay-backdrop" role="presentation">
+          <section
+            ref={exitDialogRef}
+            className="overlay"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="exit-title"
+            aria-describedby="exit-description"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !busy) {
+                event.preventDefault();
+                closeExitConfirmation();
+                return;
+              }
+              if (event.key !== 'Tab') return;
+              const buttons = [
+                ...exitDialogRef.current!.querySelectorAll<HTMLButtonElement>(
+                  'button:not(:disabled)',
+                ),
+              ];
+              if (!buttons.length) return;
+              const first = buttons[0]!;
+              const last = buttons.at(-1)!;
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
+          >
+            <h2 id="exit-title">Leave this match?</h2>
+            <p id="exit-description">
+              You cannot rejoin after exiting. Your seat will be removed from the match.
+            </p>
+            <div className="controls">
+              <button className="secondary" autoFocus onClick={closeExitConfirmation}>
+                Cancel
+              </button>
+              <button disabled={busy} onClick={() => void exitMatch()}>
+                {busy ? 'Leaving…' : 'Confirm exit'}
+              </button>
+            </div>
+            {error && <p role="alert">{error}</p>}
           </section>
         </div>
       )}

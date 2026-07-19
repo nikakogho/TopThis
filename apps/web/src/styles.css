@@ -315,6 +315,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  padding-left: 5rem;
 }
 .connection {
   color: #a39cac;
@@ -371,6 +372,39 @@ main {
 }
 .player-count-4 .opponent-3 {
   grid-column: 3;
+}
+.player-count-5 .opponents,
+.player-count-6 .opponents {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding-inline: 2%;
+}
+.player-count-5 .opponent-1 {
+  grid-column: 1;
+}
+.player-count-5 .opponent-2 {
+  grid-column: 2;
+}
+.player-count-5 .opponent-3 {
+  grid-column: 4;
+}
+.player-count-5 .opponent-4 {
+  grid-column: 5;
+}
+.player-count-6 .opponent-1 {
+  grid-column: 1;
+}
+.player-count-6 .opponent-2 {
+  grid-column: 2;
+}
+.player-count-6 .opponent-3 {
+  grid-column: 3;
+}
+.player-count-6 .opponent-4 {
+  grid-column: 4;
+}
+.player-count-6 .opponent-5 {
+  grid-column: 5;
 }
 .seat {
   position: relative;
@@ -462,15 +496,20 @@ main {
   line-height: 0.8;
 }
 .challenge {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 0.35rem;
 }
 .pile-stack {
   position: absolute;
+  z-index: 0;
+  top: 1.25rem;
+  left: 50%;
   width: 10rem;
   height: 13rem;
   pointer-events: none;
+  transform: translateX(-50%);
 }
 .pile-stack span {
   position: absolute;
@@ -479,6 +518,40 @@ main {
   border-radius: 0.85rem;
   background: #22202b;
   box-shadow: 0 3px 5px #0008;
+}
+.pile-stack span {
+  --pile-rotate: 0deg;
+  --pile-x: 0px;
+  --pile-y: 0px;
+  transform: translate(var(--pile-x), var(--pile-y)) rotate(var(--pile-rotate));
+  transition: transform 420ms cubic-bezier(0.2, 1.35, 0.35, 1);
+  animation: pile-settle 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
+}
+.match-exit {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.62rem 0.9rem;
+  border-color: #efbb5880;
+  color: #f8e6bf;
+  background: linear-gradient(145deg, #29232f, #17141d);
+  box-shadow:
+    0 8px 24px #0008,
+    inset 0 1px #ffffff12;
+  backdrop-filter: blur(10px);
+}
+.match-exit span {
+  color: #efbb58;
+  font-size: 1.15rem;
+}
+.challenge-label,
+.challenge-card {
+  position: relative;
+  z-index: 1;
 }
 .challenge-label {
   margin: 0;
@@ -739,6 +812,40 @@ main {
   --collect-x: -20rem;
   --collect-y: -12rem;
 }
+.player-count-5 .collect-to-opponent-1,
+.player-count-6 .collect-to-opponent-1 {
+  --collect-x: calc(-1 * min(20rem, 28vw));
+  --collect-y: -12rem;
+}
+.player-count-5 .collect-to-opponent-2,
+.player-count-6 .collect-to-opponent-2 {
+  --collect-x: calc(-1 * min(10rem, 14vw));
+  --collect-y: -13rem;
+}
+.player-count-6 .collect-to-opponent-3 {
+  --collect-y: -13rem;
+}
+.player-count-5 .collect-to-opponent-3,
+.player-count-6 .collect-to-opponent-4 {
+  --collect-x: min(10rem, 14vw);
+  --collect-y: -13rem;
+}
+.player-count-5 .collect-to-opponent-4,
+.player-count-6 .collect-to-opponent-5 {
+  --collect-x: min(20rem, 28vw);
+  --collect-y: -12rem;
+}
+@keyframes pile-settle {
+  from {
+    opacity: 0.2;
+    transform: translate(calc(var(--pile-x) - 10px), calc(var(--pile-y) - 18px))
+      rotate(calc(var(--pile-rotate) + 9deg)) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(var(--pile-x), var(--pile-y)) rotate(var(--pile-rotate)) scale(1);
+  }
+}
 @keyframes collect-pile {
   0% {
     opacity: 0;
@@ -785,6 +892,10 @@ main {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .pile-stack span {
+    transition: none !important;
+    transform: none !important;
+  }
   *,
   *::before,
   *::after {
@@ -820,6 +931,15 @@ main {
   .opponents {
     gap: 0.35rem;
     padding: 0;
+  }
+  .player-count-5 .opponents,
+  .player-count-6 .opponents {
+    gap: 0.2rem;
+    padding: 0;
+  }
+  .player-count-5 .opponent-seat,
+  .player-count-6 .opponent-seat {
+    padding-inline: 0.15rem;
   }
   .seat {
     width: min(7rem, 100%);
@@ -895,6 +1015,9 @@ main {
   }
   .table-header .eyebrow {
     letter-spacing: 0.12em;
+  }
+  .table-header {
+    padding-left: 4.5rem;
   }
   .arena {
     padding-inline: 0.2rem;

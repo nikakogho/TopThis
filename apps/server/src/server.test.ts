@@ -153,6 +153,27 @@ describe('TopThis server', () => {
     ).toMatchObject({ ok: false, error: { code: 'NO_SESSION' } });
   });
 
+  it('releases a Practice session idempotently through the socket boundary', async () => {
+    const client = await connect({ seed: 0, turnDurationMs: 5_000, botDelayMs: 5_000 });
+    expect(await ack(client, 'practice:create', { displayName: 'Ari', botCount: 1 })).toMatchObject(
+      { ok: true },
+    );
+    expect(await ack(client, 'practice:leave', {})).toEqual({ ok: true });
+    expect(await ack(client, 'practice:leave', {})).toEqual({ ok: true });
+    expect(await ack(client, 'practice:leave', { socketId: 'forged' })).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_PAYLOAD' },
+    });
+    expect(
+      await ack(client, 'practice:skip', {
+        commandId: 'after-leave',
+        matchId: 'm1',
+        expectedStateVersion: 0,
+        expectedTurnId: 'turn-1',
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'NO_SESSION' } });
+  });
+
   it('accepts a legal human play and rejects illegal, stale, duplicate, and forged commands', async () => {
     const client = await connect({ seed: 0, turnDurationMs: 5_000, botDelayMs: 5_000 });
     const created = await ack(client, 'practice:create', { displayName: 'Ari', botCount: 1 });

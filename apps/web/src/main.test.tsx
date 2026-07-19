@@ -59,7 +59,16 @@ const socketMock = vi.hoisted(() => {
     }),
     emit: vi.fn((event: string, ...args: unknown[]) => {
       emitted.push({ event, args });
-      if (['lobby:create', 'lobby:join', 'queue:enter', 'match:leave'].includes(event))
+      if (
+        [
+          'lobby:create',
+          'lobby:join',
+          'queue:enter',
+          'match:leave',
+          'match:exit',
+          'practice:leave',
+        ].includes(event)
+      )
         lifecycle.push(`emit:${event}`);
       const ack = args.at(-1);
       const value = eventAcks.has(event) ? eventAcks.get(event) : nextAck;
@@ -156,7 +165,7 @@ const grace: Guest = { id: 'guest2', displayName: 'Grace' };
 const lobbyView: LobbyView = {
   code: 'AB23CD',
   hostGuestId: ada.id,
-  settings: { playerCount: 2, targetScore: 50, turnDurationSeconds: 20 },
+  settings: { playerCount: 2, botCount: 0, targetScore: 50, turnDurationSeconds: 20 },
   players: [
     { guest: ada, ready: false, connected: true },
     { guest: grace, ready: false, connected: true },
@@ -233,6 +242,17 @@ describe('TopThis practice UI', () => {
       'local',
     );
     expect(document.querySelectorAll('.pile-stack span')).toHaveLength(5);
+  });
+
+  it('acknowledges Practice exit before returning home', async () => {
+    socketMock.setAckFor('practice:leave', { ok: true });
+    openMatch();
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeTruthy();
+    expect(socketMock.lifecycle).toContain('emit:practice:leave');
+    expect(socketMock.emitted.find(({ event }) => event === 'practice:leave')?.args[0]).toEqual({});
   });
 
   it('animates a real pile toward the winner and toggles sound', () => {
@@ -390,6 +410,9 @@ describe('TopThis private multiplayer UI', () => {
     expect(socketMock.api.connect).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'Choose a display name' })).toBeTruthy();
     expect(screen.getByRole('alert')).toHaveTextContent('Choose a display name to continue');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('creates and stores a guest before hosting a lobby', async () => {
@@ -419,7 +442,7 @@ describe('TopThis private multiplayer UI', () => {
     expect(socketMock.lifecycle).toEqual(['disconnect', `connect:${token}`, 'emit:lobby:create']);
     const create = socketMock.emitted.find(({ event }) => event === 'lobby:create');
     expect(create?.args[0]).toEqual({
-      settings: { playerCount: 2, targetScore: 75, turnDurationSeconds: 20 },
+      settings: { playerCount: 2, botCount: 0, targetScore: 75, turnDurationSeconds: 20 },
     });
   });
 
@@ -504,7 +527,7 @@ describe('TopThis private multiplayer UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ready up' }));
     expect(socketMock.emitted.find(({ event }) => event === 'lobby:settings')?.args[0]).toEqual({
-      settings: { playerCount: 2, targetScore: 50, turnDurationSeconds: 30 },
+      settings: { playerCount: 2, botCount: 0, targetScore: 50, turnDurationSeconds: 30 },
     });
     expect(socketMock.emitted.find(({ event }) => event === 'lobby:ready')?.args[0]).toEqual({
       ready: true,
@@ -757,6 +780,110 @@ describe('TopThis matchmaking and leaderboard UI', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Leaderboard' }));
     expect(await screen.findByText('No completed matches yet.')).toBeTruthy();
+  });
+
+  it('offers two through six players and bounded bot capacity', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          guest: ada,
+          token: 'capacity-token-that-is-at-least-thirty-two-characters',
+        }),
+      }),
+    );
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Host Game' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('heading', { name: 'Host a lobby' });
+    expect(screen.getByLabelText('Players').querySelectorAll('option')).toHaveLength(5);
+    expect(screen.getAllByRole('combobox')[1]).toHaveValue('0');
+    fireEvent.change(screen.getByLabelText('Players'), { target: { value: '6' } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: '5' } });
+    expect(screen.getByText(/1 human seat, 5 bot seats/)).toBeTruthy();
+  });
+
+  it('renders six seats and deterministic pile layer transforms', () => {
+    const players = Array.from({ length: 6 }, (_, index) => ({
+      id: `p${index}`,
+      displayName: index === 0 ? 'Ada' : `Bot ${index}`,
+      isBot: index > 0,
+      handCount: 10,
+      capturedCardCount: index,
+      connected: true,
+      abandoned: false,
+    }));
+    openMatch({
+      ...playingView,
+      players,
+      yourPlayerId: 'p0',
+      pileCount: 6,
+      challengeCard: cards[0],
+    });
+    expect(
+      screen.getByRole('region', { name: 'Opponents' }).querySelectorAll('.seat'),
+    ).toHaveLength(5);
+    const layers = [...document.querySelectorAll<HTMLElement>('.pile-stack span')];
+    expect(
+      new Set(layers.map((layer) => layer.style.getPropertyValue('--pile-rotate'))).size,
+    ).toBeGreaterThan(1);
+    expect(document.querySelector('.challenge-card')).toBeTruthy();
+  });
+
+  it('opens and cancels active network exit while restoring focus and retaining the match', async () => {
+    openMatch(privateMatchView);
+    act(() =>
+      socketMock.handlers.get('match:state')?.forEach((handler) => handler(privateMatchView)),
+    );
+    const exit = screen.getByRole('button', { name: 'Exit' });
+    fireEvent.click(exit);
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveAccessibleDescription(/cannot rejoin/i);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Game table' })).toBeTruthy();
+    await waitFor(() => expect(exit).toHaveFocus());
+  });
+
+  it('leaves an active network match only after an acknowledged exit', async () => {
+    socketMock.setAckFor('match:exit', { ok: true });
+    openMatch(privateMatchView);
+    act(() =>
+      socketMock.handlers.get('match:state')?.forEach((handler) => handler(privateMatchView)),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm exit' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Everything beats something. Top this.' }),
+    ).toBeTruthy();
+    expect(socketMock.emitted.find(({ event }) => event === 'match:exit')?.args[0]).toEqual({});
+  });
+
+  it('keeps an active match open when the server rejects exit', async () => {
+    socketMock.setAckFor('match:exit', {
+      ok: false,
+      error: { code: 'NO_SESSION', message: 'The server kept this seat active.' },
+    });
+    openMatch(privateMatchView);
+    act(() =>
+      socketMock.handlers.get('match:state')?.forEach((handler) => handler(privateMatchView)),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm exit' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('kept this seat active');
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Game table' })).toBeTruthy();
+  });
+
+  it('returns to landing on a validated lobby closure event', () => {
+    render(<App />);
+    act(() =>
+      socketMock.handlers.get('lobby:closed')?.forEach((handler) => handler({ code: 'AB23CD' })),
+    );
+    expect(screen.getByRole('button', { name: 'Host Game' })).toBeTruthy();
+    expect(screen.getByRole('alert')).toHaveTextContent('host closed this lobby');
   });
 
   it('announces a leaderboard request failure', async () => {

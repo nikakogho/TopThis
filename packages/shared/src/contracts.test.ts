@@ -61,7 +61,7 @@ describe('shared boundary contracts', () => {
     ).toThrow();
     for (const value of [
       { displayName: 'Ari', botCount: 0 },
-      { displayName: 'Ari', botCount: 4 },
+      { displayName: 'Ari', botCount: 6 },
       { displayName: 'Ari', botCount: 1, seed: 0 },
       { displayName: 'Ari', botCount: 1, targetScore: 2 },
       { displayName: 'Ari', botCount: 1, playerId: 'p2' },
